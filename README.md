@@ -32,14 +32,6 @@ You can also combine the MCP server with other observability or doc search relat
 
 ## Installation
 
-### Installing via Smithery
-
-To install mcp-victorialogs for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@VictoriaMetrics-Community/mcp-victorialogs):
-
-```bash
-npx -y @smithery/cli install @VictoriaMetrics-Community/mcp-victorialogs --client claude
-```
-
 ### Go
 
 ```bash
@@ -64,11 +56,9 @@ Just download the latest release from [Releases](https://github.com/VictoriaMetr
 
 Coming soon...
 
-<!--
-
 ### Smithery
 
-To install VictoriaLogs MCP Server for your client automatically via Smithery, yo can use the following commands:
+To install VictoriaLogs MCP Server for your client automatically via [Smithery](https://smithery.ai/server/@VictoriaMetrics-Community/mcp-victorialogs), yo can use the following commands:
 
 ```bash
 # Get the list of supported MCP clients
@@ -90,8 +80,6 @@ npx -y @smithery/cli list clients
 npx -y @smithery/cli install @VictoriaMetrics-Community/mcp-victorialogs --client <YOUR-CLIENT-NAME>
 # and follow the instructions
 ```
-
--->
 
 ## Configuration
 
