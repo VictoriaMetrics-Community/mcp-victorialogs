@@ -1,6 +1,11 @@
 # VictoriaLogs MCP Server
 
+[![Latest Release](https://img.shields.io/github/v/release/VictoriaMetrics-Community/mcp-victorialogs?sort=semver&label=&filter=!*-victorialogs&logo=github&labelColor=gray&color=gray&link=https%3A%2F%2Fgithub.com%2FVictoriaMetrics-Community%2Fmcp-victorialogs%2Freleases%2Flatest)](https://github.com/VictoriaMetrics-Community/mcp-victorialogs/releases)
 [![smithery badge](https://smithery.ai/badge/@VictoriaMetrics-Community/mcp-victorialogs)](https://smithery.ai/server/@VictoriaMetrics-Community/mcp-victorialogs)
+![License](https://img.shields.io/github/license/VictoriaMetrics-Community/mcp-victorialogs?labelColor=green&label=&link=https%3A%2F%2Fgithub.com%2FVictoriaMetrics-Community%2Fmcp-victorialogs%2Fblob%2Fmain%2FLICENSE)
+![Slack](https://img.shields.io/badge/Join-4A154B?logo=slack&link=https%3A%2F%2Fslack.victoriametrics.com)
+![X](https://img.shields.io/twitter/follow/VictoriaMetrics?style=flat&label=Follow&color=black&logo=x&labelColor=black&link=https%3A%2F%2Fx.com%2FVictoriaMetrics)
+![Reddit](https://img.shields.io/reddit/subreddit-subscribers/VictoriaMetrics?style=flat&label=Join&labelColor=red&logoColor=white&logo=reddit&link=https%3A%2F%2Fwww.reddit.com%2Fr%2FVictoriaMetrics)
 
 The implementation of [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [VictoriaLogs](https://docs.victoriametrics.com/victorialogs/).
 
