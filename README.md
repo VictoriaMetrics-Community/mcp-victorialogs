@@ -1,5 +1,7 @@
 # VictoriaLogs MCP Server
 
+[![smithery badge](https://smithery.ai/badge/@VictoriaMetrics-Community/mcp-victorialogs)](https://smithery.ai/server/@VictoriaMetrics-Community/mcp-victorialogs)
+
 The implementation of [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [VictoriaLogs](https://docs.victoriametrics.com/victorialogs/).
 
 This provides access to your VictoriaLogs instance and seamless integration with [VictoriaLogs APIs](https://docs.victoriametrics.com/victorialogs/querying/#http-api) and [documentation](https://docs.victoriametrics.com/victorialogs/).
@@ -29,6 +31,14 @@ You can also combine the MCP server with other observability or doc search relat
 - Go 1.24 or higher (if you want to build from source)
 
 ## Installation
+
+### Installing via Smithery
+
+To install mcp-victorialogs for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@VictoriaMetrics-Community/mcp-victorialogs):
+
+```bash
+npx -y @smithery/cli install @VictoriaMetrics-Community/mcp-victorialogs --client claude
+```
 
 ### Go
 
@@ -198,6 +208,7 @@ Add the following to your Zed config file:
       "settings": {}
     }
   }
+}
 ```
 
 See [Zed MCP docs](https://zed.dev/docs/ai/mcp) for more info.
