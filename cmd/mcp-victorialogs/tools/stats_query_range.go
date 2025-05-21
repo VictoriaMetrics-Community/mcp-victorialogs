@@ -16,9 +16,9 @@ var (
 		mcp.WithDescription("Log stats for the given query on the given [start ... end] time range with the given step interval. The stats is returned in the format compatible with Prometheus querying API. This tool uses `/select/logsql/stats_query_range` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "Querying log stats",
-			ReadOnlyHint:    true,
-			DestructiveHint: false,
-			OpenWorldHint:   true,
+			ReadOnlyHint:    ptr(true),
+			DestructiveHint: ptr(false),
+			OpenWorldHint:   ptr(true),
 		}),
 		mcp.WithString("tenant",
 			mcp.Title("Tenant name (Account ID and Project ID)"),

@@ -16,9 +16,9 @@ var (
 		mcp.WithDescription("Get log stream field names from results of the given <query> on the given [<start> ... <end>] time range. The response also contains the number of log results per every field name.. This tool uses `/select/logsql/stream_field_names` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "List of stream fields",
-			ReadOnlyHint:    true,
-			DestructiveHint: false,
-			OpenWorldHint:   true,
+			ReadOnlyHint:    ptr(true),
+			DestructiveHint: ptr(false),
+			OpenWorldHint:   ptr(true),
 		}),
 		mcp.WithString("tenant",
 			mcp.Title("Tenant name (Account ID and Project ID)"),
