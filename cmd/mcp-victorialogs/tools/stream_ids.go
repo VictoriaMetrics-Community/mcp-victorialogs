@@ -16,9 +16,9 @@ var (
 		mcp.WithDescription("Get _stream_id values for the log streams from results of the given <query> on the given [<start> ... <end>] time range. The response also contains the number of log results per every _stream_id. This tool uses `/select/logsql/stream_ids` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "Stream IDs list",
-			ReadOnlyHint:    true,
-			DestructiveHint: false,
-			OpenWorldHint:   true,
+			ReadOnlyHint:    ptr(true),
+			DestructiveHint: ptr(false),
+			OpenWorldHint:   ptr(true),
 		}),
 		mcp.WithString("tenant",
 			mcp.Title("Tenant name (Account ID and Project ID)"),
