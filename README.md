@@ -247,10 +247,6 @@ Add the following to your Windsurf MCP config file.
 
 See [Windsurf MCP docs](https://docs.windsurf.com/windsurf/mcp) for more info.
 
-### Amazon Bedrock
-
-Coming soon....
-
 ### Using Docker instead of binary
 
 Coming soon...
