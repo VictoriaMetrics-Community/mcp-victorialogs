@@ -64,7 +64,7 @@ This is the easiest way to get started without needing to install Go or build fr
 ```bash
 docker run -d --name mcp-victorialogs \
   -e MCP_SERVER_MODE=sse \
-  -e VM_INSTANCE_ENTRYPOINT=https://play-vmlogs.victoriametrics.com \
+  -e VL_INSTANCE_ENTRYPOINT=https://play-vmlogs.victoriametrics.com \
   ghcr.io/victoriametrics-community/mcp-victorialogs
 ```
 
@@ -333,8 +333,8 @@ You should replace run command in configuration examples above in the following 
           "ghcr.io/victoriametrics-community/mcp-victorialogs",
         ],
       "env": {
-        "VL_INSTANCE_ENTRYPOINT": "<YOUR_VM_INSTANCE>",
-        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VM_BEARER_TOKEN>"
+        "VL_INSTANCE_ENTRYPOINT": "<YOUR_VL_INSTANCE>",
+        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>"
       }
     }
   }
