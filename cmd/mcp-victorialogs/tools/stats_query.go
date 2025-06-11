@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -11,8 +10,10 @@ import (
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/config"
 )
 
+const toolNameStatsQuery = "stats_query"
+
 var (
-	toolStatsQuery = mcp.NewTool("stats_query",
+	toolStatsQuery = mcp.NewTool(toolNameStatsQuery,
 		mcp.WithDescription("Log stats for the given query at the given timestamp (time) in the format compatible with Prometheus querying API. This tool uses `/select/logsql/stats_query` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "Querying log stats",
@@ -40,11 +41,6 @@ var (
 )
 
 func toolStatsQueryHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	accountID, projectID, err := GetToolReqTenant(tcr)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
 	query, err := GetToolReqParam[string](tcr, "query", true)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -55,12 +51,10 @@ func toolStatsQueryHandler(ctx context.Context, cfg *config.Config, tcr mcp.Call
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.SelectAPIURL("stats_query"), nil)
+	req, err := CreateSelectRequest(ctx, cfg, tcr, "stats_query")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create request: %v", err)), nil
 	}
-	req.Header.Set("AccountID", accountID)
-	req.Header.Set("ProjectID", projectID)
 
 	q := req.URL.Query()
 	q.Add("query", query)
@@ -73,6 +67,9 @@ func toolStatsQueryHandler(ctx context.Context, cfg *config.Config, tcr mcp.Call
 }
 
 func RegisterToolStatsQuery(s *server.MCPServer, c *config.Config) {
+	if c.IsToolDisabled(toolNameStatsQuery) {
+		return
+	}
 	s.AddTool(toolStatsQuery, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return toolStatsQueryHandler(ctx, c, request)
 	})

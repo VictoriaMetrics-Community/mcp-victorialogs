@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -11,8 +10,10 @@ import (
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/config"
 )
 
+const toolNameStatsQueryRange = "stats_query_range"
+
 var (
-	toolStatsQueryRange = mcp.NewTool("stats_query",
+	toolStatsQueryRange = mcp.NewTool(toolNameStatsQueryRange,
 		mcp.WithDescription("Log stats for the given query on the given [start ... end] time range with the given step interval. The stats is returned in the format compatible with Prometheus querying API. This tool uses `/select/logsql/stats_query_range` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "Querying log stats",
@@ -52,11 +53,6 @@ var (
 )
 
 func toolStatsQueryRangeHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	accountID, projectID, err := GetToolReqTenant(tcr)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
 	query, err := GetToolReqParam[string](tcr, "query", true)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -77,12 +73,10 @@ func toolStatsQueryRangeHandler(ctx context.Context, cfg *config.Config, tcr mcp
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.SelectAPIURL("stats_query_range"), nil)
+	req, err := CreateSelectRequest(ctx, cfg, tcr, "stats_query_range")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create request: %v", err)), nil
 	}
-	req.Header.Set("AccountID", accountID)
-	req.Header.Set("ProjectID", projectID)
 
 	q := req.URL.Query()
 	q.Add("query", query)
@@ -99,6 +93,9 @@ func toolStatsQueryRangeHandler(ctx context.Context, cfg *config.Config, tcr mcp
 }
 
 func RegisterToolStatsQueryRange(s *server.MCPServer, c *config.Config) {
+	if c.IsToolDisabled(toolNameStatsQueryRange) {
+		return
+	}
 	s.AddTool(toolStatsQueryRange, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return toolStatsQueryRangeHandler(ctx, c, request)
 	})

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,10 +12,57 @@ import (
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/config"
 )
 
-func GetTextBodyForRequest(req *http.Request, cfg *config.Config) *mcp.CallToolResult {
-	if cfg.BearerToken() != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.BearerToken()))
+func CreateSelectRequest(ctx context.Context, cfg *config.Config, tcr mcp.CallToolRequest, path ...string) (*http.Request, error) {
+	accountID, projectID, err := GetToolReqTenant(tcr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tenant: %v", err)
 	}
+
+	selectURL, err := getSelectURL(ctx, cfg, tcr, path...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get select URL: %v", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, selectURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+	bearerToken := cfg.BearerToken()
+	if bearerToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
+	}
+	req.Header.Set("AccountID", accountID)
+	req.Header.Set("ProjectID", projectID)
+
+	return req, nil
+}
+
+func CreateAdminRequest(ctx context.Context, cfg *config.Config, tcr mcp.CallToolRequest, path ...string) (*http.Request, error) {
+	selectURL, err := getRootURL(ctx, cfg, tcr, path...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get select URL: %v", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, selectURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+	bearerToken := cfg.BearerToken()
+	if bearerToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
+	}
+	return req, nil
+}
+
+func getRootURL(_ context.Context, cfg *config.Config, _ mcp.CallToolRequest, path ...string) (string, error) {
+	return cfg.EntryPointURL().JoinPath(path...).String(), nil
+}
+
+func getSelectURL(_ context.Context, cfg *config.Config, _ mcp.CallToolRequest, path ...string) (string, error) {
+	return cfg.EntryPointURL().JoinPath("select", "logsql").JoinPath(path...).String(), nil
+}
+
+func GetTextBodyForRequest(req *http.Request, _ *config.Config) *mcp.CallToolResult {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to do request: %v", err))
@@ -31,7 +79,7 @@ func GetTextBodyForRequest(req *http.Request, cfg *config.Config) *mcp.CallToolR
 }
 
 type ToolReqParamType interface {
-	string | float64 | bool | []string
+	string | float64 | bool | []string | []any
 }
 
 func GetToolReqParam[T ToolReqParamType](tcr mcp.CallToolRequest, param string, required bool) (T, error) {
