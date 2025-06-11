@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -11,8 +10,10 @@ import (
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/config"
 )
 
+const toolNameFieldValues = "field_values"
+
 var (
-	toolFieldValues = mcp.NewTool("field_values",
+	toolFieldValues = mcp.NewTool(toolNameFieldValues,
 		mcp.WithDescription("Get unique values for the given <fieldName> field from results of the given <query> on the given [<start> ... <end>] time range. The response also contains the number of log results per every field value. This tool uses `/select/logsql/field_values` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "List of field values for the query",
@@ -51,11 +52,6 @@ var (
 )
 
 func toolFieldValuesHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	accountID, projectID, err := GetToolReqTenant(tcr)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
 	query, err := GetToolReqParam[string](tcr, "query", true)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -76,12 +72,10 @@ func toolFieldValuesHandler(ctx context.Context, cfg *config.Config, tcr mcp.Cal
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.SelectAPIURL("field_values"), nil)
+	req, err := CreateSelectRequest(ctx, cfg, tcr, "field_values")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create request: %v", err)), nil
 	}
-	req.Header.Set("AccountID", accountID)
-	req.Header.Set("ProjectID", projectID)
 
 	q := req.URL.Query()
 	q.Add("query", query)
@@ -96,6 +90,9 @@ func toolFieldValuesHandler(ctx context.Context, cfg *config.Config, tcr mcp.Cal
 }
 
 func RegisterToolFieldValues(s *server.MCPServer, c *config.Config) {
+	if c.IsToolDisabled(toolNameFieldValues) {
+		return
+	}
 	s.AddTool(toolFieldValues, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return toolFieldValuesHandler(ctx, c, request)
 	})

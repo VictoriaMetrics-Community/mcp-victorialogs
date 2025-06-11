@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -11,8 +10,10 @@ import (
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/config"
 )
 
+const toolNameStreamFieldValues = "stream_field_values"
+
 var (
-	toolStreamFieldValues = mcp.NewTool("stream_field_values",
+	toolStreamFieldValues = mcp.NewTool(toolNameStreamFieldValues,
 		mcp.WithDescription("Get unique values for the given <fieldName> field from results of the given <query> on the given [<start> ... <end>] time range. The response also contains the number of log results per every field value. This tool uses `/select/logsql/stream_field_values` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "List of stream field values",
@@ -51,11 +52,6 @@ var (
 )
 
 func toolStreamFieldValuesHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	accountID, projectID, err := GetToolReqTenant(tcr)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
 	query, err := GetToolReqParam[string](tcr, "query", true)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -76,12 +72,10 @@ func toolStreamFieldValuesHandler(ctx context.Context, cfg *config.Config, tcr m
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.SelectAPIURL("stream_field_values"), nil)
+	req, err := CreateSelectRequest(ctx, cfg, tcr, "stream_field_values")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create request: %v", err)), nil
 	}
-	req.Header.Set("AccountID", accountID)
-	req.Header.Set("ProjectID", projectID)
 
 	q := req.URL.Query()
 	q.Add("query", query)
@@ -96,6 +90,9 @@ func toolStreamFieldValuesHandler(ctx context.Context, cfg *config.Config, tcr m
 }
 
 func RegisterToolStreamFieldValues(s *server.MCPServer, c *config.Config) {
+	if c.IsToolDisabled(toolNameStreamFieldValues) {
+		return
+	}
 	s.AddTool(toolStreamFieldValues, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return toolStreamFieldValuesHandler(ctx, c, request)
 	})

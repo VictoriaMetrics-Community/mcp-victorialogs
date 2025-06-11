@@ -43,23 +43,63 @@ You can also combine the MCP server with other observability or doc search relat
 go install github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs@latest
 ```
 
-### Source Code
-
-```bash
-git clone https://github.com/VictoriaMetrics-Community/mcp-victorialogs.git
-cd mcp-victorialogs
-go build -o bin/mcp-victorialogs ./cmd/mcp-victorialogs/main.go
-
-# after that add bin/mcp-victorialogs file to your PATH
-```
-
 ### Binaries
 
 Just download the latest release from [Releases](https://github.com/VictoriaMetrics-Community/mcp-victorialogs/releases) page and put it to your PATH.
 
+Example for Linux x86_64 (note that other architectures and platforms are also available):
+
+```bash
+latest=$(curl -s https://api.github.com/repos/VictoriaMetrics-Community/mcp-victorialogs/releases/latest | grep 'tag_name' | cut -d\" -f4)
+wget https://github.com/VictoriaMetrics-Community/mcp-victorialogs/releases/download/$latest/mcp-victorialogs_Linux_x86_64.tar.gz
+tar axvf mcp-victorialogs_Linux_x86_64.tar.gz
+```
+
 ### Docker
 
-Coming soon...
+You can run VictoriaLogs MCP Server using Docker.
+
+This is the easiest way to get started without needing to install Go or build from source.
+
+```bash
+docker run -d --name mcp-victorialogs \
+  -e MCP_SERVER_MODE=sse \
+  -e VM_INSTANCE_ENTRYPOINT=https://play-vmlogs.victoriametrics.com \
+  ghcr.io/victoriametrics-community/mcp-victorialogs
+```
+
+You should replace environment variables with your own parameters.
+
+Note that the `MCP_SERVER_MODE=sse` flag is used to enable Server-Sent Events mode, which used by MCP clients to connect.
+Alternatively, you can use `MCP_SERVER_MODE=http` to enable Streamable HTTP mode. More details about server modes can be found in the [Configuration](#configuration) section.
+
+See available docker images in [github registry](https://github.com/orgs/VictoriaMetrics-Community/packages/container/package/mcp-victorialogs).
+
+Also see [Using Docker instead of binary](#using-docker-instead-of-binary) section for more details about using Docker with MCP server with clients in stdio mode.
+
+
+### Source Code
+
+For building binary from source code you can use the following approach:
+
+- Clone repo:
+
+  ```bash
+  git clone https://github.com/VictoriaMetrics-Community/mcp-victorialogs.git
+  cd mcp-victorialogs
+  ```
+- Build binary from cloned source code:
+
+  ```bash
+  make build
+  # after that you can find binary mcp-victorialogs and copy this file to your PATH or run inplace
+  ```
+- Build image from cloned source code:
+
+  ```bash
+  docker build -t mcp-victorialogs .
+  # after that you can use docker image mcp-victorialogs for running or pushing
+  ```
 
 ### Smithery
 
@@ -90,12 +130,26 @@ npx -y @smithery/cli install @VictoriaMetrics-Community/mcp-victorialogs --clien
 
 MCP Server for VictoriaLogs is configured via environment variables:
 
-| Variable | Description                               | Required | Default | Allowed values |
-|----------|-------------------------------------------|----------|---------|---------|
-| `VL_INSTANCE_ENTRYPOINT` | URL to VictoriaLogs instance              | Yes | -       | - |
-| `VL_INSTANCE_BEARER_TOKEN` | Authentication token for VictoriaLogs API | No | -       | - |
-| `MCP_SERVER_MODE` | Server operation mode                     | No | `stdio` | `stdio`, `sse` |
-| `MCP_SSE_ADDR` | Address for SSE server to listen on       | No | `:8081` | - |
+| Variable                   | Description                                             | Required | Default          | Allowed values         |
+|----------------------------|---------------------------------------------------------|----------|------------------|------------------------|
+| `VL_INSTANCE_ENTRYPOINT`   | URL to VictoriaLogs instance                            | Yes      | -                | -                      |
+| `VL_INSTANCE_BEARER_TOKEN` | Authentication token for VictoriaLogs API               | No       | -                | -                      |
+| `MCP_SERVER_MODE`          | Server operation mode. See [Modes](#modes) for details. | No       | `stdio`          | `stdio`, `sse`, `http` |
+| `MCP_LISTEN_ADDR`          | Address for SSE or HTTP server to listen on             | No       | `localhost:8081` | -                      |
+| `MCP_DISABLED_TOOLS`       | Comma-separated list of tools to disable                | No       | -                | -                      |
+
+### Modes
+
+MCP Server supports the following modes of operation (transports):
+
+- `stdio` - Standard input/output mode, where the server reads commands from standard input and writes responses to standard output. This is the default mode and is suitable for local servers.
+- `sse` - Server-Sent Events. Server will expose the `/sse` and `/message` endpoints for SSE connections.
+- `http` - Streamable HTTP. Server will expose the `/mcp` endpoint for HTTP connections.
+
+More info about traqnsports you can find in MCP docs:
+
+- [Core concepts -> Transports](https://modelcontextprotocol.io/docs/concepts/transports)
+- [Specifications -> Transports](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports)
 
 ### Сonfiguration examples
 
@@ -106,7 +160,20 @@ export VL_INSTANCE_ENTRYPOINT="https://play-vmlogs.victoriametrics.com"
 # Server mode
 export MCP_SERVER_MODE="sse"
 export MCP_SSE_ADDR="0.0.0.0:8081"
+export MCP_DISABLED_TOOLS="hits,facets"
 ```
+
+## Endpoints
+
+In SSE and HTTP modes the MCP server provides the following endpoints:
+
+| Endpoint            | Description                                                                                      |
+|---------------------|--------------------------------------------------------------------------------------------------|
+| `/sse` + `/message` | Endpoints for messages in SSE mode (for MCP clients that support SSE)                            |
+| `/mcp`              | HTTP endpoint for streaming messages in HTTP mode (for MCP clients that support Streamable HTTP) |
+| `/metrics`          | Metrics in Prometheus format for monitoring the MCP server                                       |
+| `/health/liveness`  | Liveness check endpoint to ensure the server is running                                          |
+| `/health/readiness` | Readiness check endpoint to ensure the server is ready to accept requests                        |
 
 ## Setup in clients
 
@@ -249,7 +316,30 @@ See [Windsurf MCP docs](https://docs.windsurf.com/windsurf/mcp) for more info.
 
 ### Using Docker instead of binary
 
-Coming soon...
+You can run VictoriaLogs MCP Server using Docker instead of local binary.
+
+You should replace run command in configuration examples above in the following way:
+
+```
+{
+  "mcpServers": {
+    "victoriametrics": {
+      "command": "docker",
+        "args": [
+          "run",
+          "-i", "--rm",
+          "-e", "VL_INSTANCE_ENTRYPOINT",
+          "-e", "VL_INSTANCE_BEARER_TOKEN",
+          "ghcr.io/victoriametrics-community/mcp-victorialogs",
+        ],
+      "env": {
+        "VL_INSTANCE_ENTRYPOINT": "<YOUR_VM_INSTANCE>",
+        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VM_BEARER_TOKEN>"
+      }
+    }
+  }
+}
+```
 
 ## Usage
 
@@ -295,12 +385,28 @@ These are just examples at the moment, the prompt library will be added to in th
 |--------|-------------------------------------------------------|
 | `documentation` | Search VictoriaLogs documentation for specific topics |
 
+## Roadmap
+
+- [ ] Support "Explain query" tool
+- [ ] Support optional integration with [VictoriaMetrics Cloud](https://victoriametrics.com/products/cloud/)  
+- [ ] Add some extra knowledge to server in addition to current documentation tool:
+  - [x] [VictoriaMetrics blog](https://victoriametrics.com/blog/) posts
+  - [ ] Github issues
+  - [ ] Public slack chat history
+  - [ ] CRD schemas
+- [ ] Implement multitenant version of MCP (that will support several deployments)
+- [ ] Add flags/configs validation tool
+- [ ] Enabling/disabling tools via configuration
+
 ## Disclaimer
 
 AI services and agents along with MCP servers like this cannot guarantee the accuracy, completeness and reliability of results.
 You should double check the results obtained with AI.
+
 The quality of the MCP Server and its responses depends very much on the capabilities of your client and the quality of the model you are using.
 
 ## Contributing
 
-Contributions to the MCP VictoriaLogs project are welcome! Please feel free to submit issues, feature requests, or pull requests.
+Contributions to the MCP VictoriaLogs project are welcome! 
+
+Please feel free to submit issues, feature requests, or pull requests.

@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -11,8 +10,10 @@ import (
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/config"
 )
 
+const toolNameFacets = "facets"
+
 var (
-	toolFacets = mcp.NewTool("facets",
+	toolFacets = mcp.NewTool(toolNameFacets,
 		mcp.WithDescription("The most frequent values per each log field seen in the logs returned by the given <query> on the given [<start> ... <end>] time range. This tool uses `/select/logsql/facets` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "Most frequent values",
@@ -63,11 +64,6 @@ var (
 )
 
 func toolFacetsHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	accountID, projectID, err := GetToolReqTenant(tcr)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
 	query, err := GetToolReqParam[string](tcr, "query", true)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -103,12 +99,10 @@ func toolFacetsHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallTool
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.SelectAPIURL("facets"), nil)
+	req, err := CreateSelectRequest(ctx, cfg, tcr, "facets")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create request: %v", err)), nil
 	}
-	req.Header.Set("AccountID", accountID)
-	req.Header.Set("ProjectID", projectID)
 
 	q := req.URL.Query()
 	q.Add("query", query)
@@ -134,6 +128,9 @@ func toolFacetsHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallTool
 }
 
 func RegisterToolFacets(s *server.MCPServer, c *config.Config) {
+	if c.IsToolDisabled(toolNameFacets) {
+		return
+	}
 	s.AddTool(toolFacets, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return toolFacetsHandler(ctx, c, request)
 	})

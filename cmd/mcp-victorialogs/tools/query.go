@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -11,8 +10,10 @@ import (
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/config"
 )
 
+const toolNameQuery = "query"
+
 var (
-	toolQuery = mcp.NewTool("query",
+	toolQuery = mcp.NewTool(toolNameQuery,
 		mcp.WithDescription("Executes LogsQL query expression to search log entries. This tool uses `/select/logsql/query` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "Query logs",
@@ -56,11 +57,6 @@ var (
 )
 
 func toolQueryHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	accountID, projectID, err := GetToolReqTenant(tcr)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
 	query, err := GetToolReqParam[string](tcr, "query", true)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -89,12 +85,10 @@ func toolQueryHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallToolR
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.SelectAPIURL("query"), nil)
+	req, err := CreateSelectRequest(ctx, cfg, tcr, "query")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create request: %v", err)), nil
 	}
-	req.Header.Set("AccountID", accountID)
-	req.Header.Set("ProjectID", projectID)
 
 	q := req.URL.Query()
 	q.Add("query", query)
@@ -116,6 +110,9 @@ func toolQueryHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallToolR
 }
 
 func RegisterToolQuery(s *server.MCPServer, c *config.Config) {
+	if c.IsToolDisabled(toolNameQuery) {
+		return
+	}
 	s.AddTool(toolQuery, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return toolQueryHandler(ctx, c, request)
 	})

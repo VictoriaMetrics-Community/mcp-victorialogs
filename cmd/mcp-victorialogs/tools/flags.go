@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -11,8 +10,10 @@ import (
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/config"
 )
 
+const toolNameFlags = "flags"
+
 var (
-	toolFlags = mcp.NewTool("flags",
+	toolFlags = mcp.NewTool(toolNameFlags,
 		mcp.WithDescription("List of non-default flags (parameters) of the VictoriaLogs instance. This tools uses `/flags` endpoint of VictoriaLogs API."),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			Title:           "List of non-default flags (parameters)",
@@ -23,8 +24,8 @@ var (
 	)
 )
 
-func toolFlagsHandler(ctx context.Context, cfg *config.Config, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.AdminAPIURL("flags"), nil)
+func toolFlagsHandler(ctx context.Context, cfg *config.Config, tcr mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	req, err := CreateAdminRequest(ctx, cfg, tcr, "flags")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create request: %v", err)), nil
 	}
@@ -32,6 +33,9 @@ func toolFlagsHandler(ctx context.Context, cfg *config.Config, _ mcp.CallToolReq
 }
 
 func RegisterToolFlags(s *server.MCPServer, c *config.Config) {
+	if c.IsToolDisabled(toolNameFlags) {
+		return
+	}
 	s.AddTool(toolFlags, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return toolFlagsHandler(ctx, c, request)
 	})
