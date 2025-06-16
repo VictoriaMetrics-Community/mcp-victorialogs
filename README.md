@@ -385,7 +385,7 @@ Here's a list of available tools:
 | `stats_query`        | Querying log stats for the given time                 |
 | `stats_query_range`  | Querying log stats on the given time range            |
 | `stream_field_names` | List of stream fields for the query                   |
-| `stream_field_names` | List of stream field values for the query             |
+| `stream_field_values` | List of stream field values for the query             |
 | `stream_ids`         | List of stream IDs for the query                      |
 | `streams`            | List of streams for the query                         |
 
