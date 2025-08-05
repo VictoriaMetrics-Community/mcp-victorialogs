@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestInitConfig(t *testing.T) {
@@ -12,6 +13,7 @@ func TestInitConfig(t *testing.T) {
 	originalServerMode := os.Getenv("MCP_SERVER_MODE")
 	originalSSEAddr := os.Getenv("MCP_SSE_ADDR")
 	originalBearerToken := os.Getenv("VL_INSTANCE_BEARER_TOKEN")
+	originalHeartbeatInterval := os.Getenv("MCP_HEARTBEAT_INTERVAL")
 
 	// Restore environment variables after test
 	defer func() {
@@ -19,6 +21,7 @@ func TestInitConfig(t *testing.T) {
 		os.Setenv("MCP_SERVER_MODE", originalServerMode)
 		os.Setenv("MCP_SSE_ADDR", originalSSEAddr)
 		os.Setenv("VL_INSTANCE_BEARER_TOKEN", originalBearerToken)
+		os.Setenv("MCP_HEARTBEAT_INTERVAL", originalHeartbeatInterval)
 	}()
 
 	// Test case 1: Valid configuration
@@ -106,6 +109,36 @@ func TestInitConfig(t *testing.T) {
 		}
 		if cfg.ListenAddr() != "localhost:8081" {
 			t.Errorf("Expected default SSE address 'localhost:8081', got: %s", cfg.ListenAddr())
+		}
+	})
+
+	// Test case 5: Correct heartbeat interval
+	t.Run("Correct heartbeat interval", func(t *testing.T) {
+		// Set environment variables
+		os.Setenv("VL_INSTANCE_ENTRYPOINT", "http://example.com")
+		os.Setenv("MCP_SERVER_MODE", "stdio")
+		os.Setenv("MCP_HEARTBEAT_INTERVAL", "30s")
+		// Initialize config
+		cfg, err := InitConfig()
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+		// Check values
+		if cfg.HeartbeatInterval() != 30*time.Second {
+			t.Errorf("Expected heartbeat interval to be 30 seconds, got: %d", cfg.HeartbeatInterval())
+		}
+	})
+
+	// Test case 6: Incorrect heartbeat interval
+	t.Run("Incorrect heartbeat interval", func(t *testing.T) {
+		// Set environment variables
+		os.Setenv("VL_INSTANCE_ENTRYPOINT", "http://example.com")
+		os.Setenv("MCP_SERVER_MODE", "stdio")
+		os.Setenv("MCP_HEARTBEAT_INTERVAL", "123")
+		// Initialize config
+		_, err := InitConfig()
+		if err == nil || err.Error() != "failed to parse MCP_HEARTBEAT_INTERVAL: time: missing unit in duration \"123\"" {
+			t.Errorf("Expected error 'failed to parse MCP_HEARTBEAT_INTERVAL: time: missing unit in duration \"123\"', got: %v", err)
 		}
 	})
 }
