@@ -5,14 +5,16 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 type Config struct {
-	serverMode    string
-	listenAddr    string
-	entrypoint    string
-	bearerToken   string
-	disabledTools map[string]bool
+	serverMode        string
+	listenAddr        string
+	entrypoint        string
+	bearerToken       string
+	disabledTools     map[string]bool
+	heartbeatInterval time.Duration
 
 	entryPointURL *url.URL
 }
@@ -28,12 +30,27 @@ func InitConfig() (*Config, error) {
 			}
 		}
 	}
+
+	var heartbeatInterval time.Duration
+	heartbeatIntervalStr := os.Getenv("MCP_HEARTBEAT_INTERVAL")
+	if heartbeatIntervalStr != "" {
+		interval, err := time.ParseDuration(heartbeatIntervalStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse MCP_HEARTBEAT_INTERVAL: %w", err)
+		}
+		if interval <= 0 {
+			return nil, fmt.Errorf("MCP_HEARTBEAT_INTERVAL must be greater than 0")
+		}
+		heartbeatInterval = interval
+	}
+
 	result := &Config{
-		serverMode:    strings.ToLower(os.Getenv("MCP_SERVER_MODE")),
-		listenAddr:    os.Getenv("MCP_LISTEN_ADDR"),
-		entrypoint:    os.Getenv("VL_INSTANCE_ENTRYPOINT"),
-		bearerToken:   os.Getenv("VL_INSTANCE_BEARER_TOKEN"),
-		disabledTools: disabledToolsMap,
+		serverMode:        strings.ToLower(os.Getenv("MCP_SERVER_MODE")),
+		listenAddr:        os.Getenv("MCP_LISTEN_ADDR"),
+		entrypoint:        os.Getenv("VL_INSTANCE_ENTRYPOINT"),
+		bearerToken:       os.Getenv("VL_INSTANCE_BEARER_TOKEN"),
+		disabledTools:     disabledToolsMap,
+		heartbeatInterval: heartbeatInterval,
 	}
 	// Left for backward compatibility
 	if result.listenAddr == "" {
@@ -92,4 +109,11 @@ func (c *Config) IsToolDisabled(toolName string) bool {
 	}
 	disabled, ok := c.disabledTools[toolName]
 	return ok && disabled
+}
+
+func (c *Config) HeartbeatInterval() time.Duration {
+	if c.heartbeatInterval <= 0 {
+		return 30 * time.Second // Default heartbeat interval
+	}
+	return c.heartbeatInterval
 }
