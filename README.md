@@ -411,7 +411,7 @@ These are just examples at the moment, the prompt library will be added to in th
   - [ ] CRD schemas
 - [ ] Implement multitenant version of MCP (that will support several deployments)
 - [ ] Add flags/configs validation tool
-- [ ] Enabling/disabling tools via configuration
+- [x] Enabling/disabling tools via configuration
 
 ## Disclaimer
 
