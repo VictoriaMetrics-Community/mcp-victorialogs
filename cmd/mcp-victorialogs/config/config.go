@@ -15,6 +15,7 @@ type Config struct {
 	bearerToken       string
 	disabledTools     map[string]bool
 	heartbeatInterval time.Duration
+	pathPrefix        string
 
 	entryPointURL *url.URL
 }
@@ -51,6 +52,7 @@ func InitConfig() (*Config, error) {
 		bearerToken:       os.Getenv("VL_INSTANCE_BEARER_TOKEN"),
 		disabledTools:     disabledToolsMap,
 		heartbeatInterval: heartbeatInterval,
+		pathPrefix:        os.Getenv("MCP_PATH_PREFIX"),
 	}
 	// Left for backward compatibility
 	if result.listenAddr == "" {
@@ -116,4 +118,8 @@ func (c *Config) HeartbeatInterval() time.Duration {
 		return 30 * time.Second // Default heartbeat interval
 	}
 	return c.heartbeatInterval
+}
+
+func (c *Config) PathPrefix() string {
+	return c.pathPrefix
 }
