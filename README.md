@@ -150,6 +150,7 @@ MCP Server for VictoriaLogs is configured via environment variables:
 | `VL_INSTANCE_BEARER_TOKEN` | Authentication token for VictoriaLogs API               | No       | -                | -                      |
 | `MCP_SERVER_MODE`          | Server operation mode. See [Modes](#modes) for details. | No       | `stdio`          | `stdio`, `sse`, `http` |
 | `MCP_LISTEN_ADDR`          | Address for SSE or HTTP server to listen on             | No       | `localhost:8081` | -                      |
+| `MCP_PATH_PREFIX`          | Path prefix for all endpoints (useful for ingress deployments) | No | -              | -                      |
 | `MCP_DISABLED_TOOLS`       | Comma-separated list of tools to disable                | No       | -                | -                      |
 | `MCP_HEARTBEAT_INTERVAL`   | Defines the heartbeat interval for the streamable-http protocol. <br /> It means the MCP server will send a heartbeat to the client through the GET connection, <br /> to keep the connection alive from being closed by the network infrastructure (e.g. gateways) | No | `30s`  | -   |
 
@@ -176,6 +177,9 @@ export VL_INSTANCE_ENTRYPOINT="https://play-vmlogs.victoriametrics.com"
 export MCP_SERVER_MODE="sse"
 export MCP_SSE_ADDR="0.0.0.0:8081"
 export MCP_DISABLED_TOOLS="hits,facets"
+
+# Path prefix for ingress deployments
+export MCP_PATH_PREFIX="/victoria-logs/production"
 ```
 
 ## Endpoints
@@ -189,6 +193,8 @@ In SSE and HTTP modes the MCP server provides the following endpoints:
 | `/metrics`          | Metrics in Prometheus format for monitoring the MCP server                                       |
 | `/health/liveness`  | Liveness check endpoint to ensure the server is running                                          |
 | `/health/readiness` | Readiness check endpoint to ensure the server is ready to accept requests                        |
+
+**Note:** When `MCP_PATH_PREFIX` is configured, all endpoints will be prefixed with the specified path. For example, with `MCP_PATH_PREFIX="/victoria-logs/production"`, the `/metrics` endpoint becomes `/victoria-logs/production/metrics`.
 
 ## Setup in clients
 

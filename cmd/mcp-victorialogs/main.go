@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -34,6 +36,20 @@ const (
 	_shutdownHardPeriod  = 3 * time.Second
 	_readinessDrainDelay = 3 * time.Second
 )
+
+// buildPath constructs a path with the configured prefix
+func buildPath(prefix, endpoint string) string {
+	if prefix == "" {
+		return endpoint
+	}
+	// Ensure prefix starts with / and doesn't end with /
+	prefix = strings.TrimSuffix(prefix, "/")
+	if !strings.HasPrefix(prefix, "/") {
+		prefix = "/" + prefix
+	}
+	// Join the paths properly
+	return path.Join(prefix, endpoint)
+}
 
 func main() {
 	c, err := config.InitConfig()
@@ -101,17 +117,19 @@ Try not to second guess information - if you don't know something or lack inform
 	defer stop()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+	pathPrefix := c.PathPrefix()
+	
+	mux.HandleFunc(buildPath(pathPrefix, "/metrics"), func(w http.ResponseWriter, _ *http.Request) {
 		ms.WritePrometheus(w)
 		metrics.WriteProcessMetrics(w)
 	})
-	mux.HandleFunc("/health/liveness", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(buildPath(pathPrefix, "/health/liveness"), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		_, _ = w.Write([]byte("OK\n"))
 	})
-	mux.HandleFunc("/health/readiness", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(buildPath(pathPrefix, "/health/readiness"), func(w http.ResponseWriter, _ *http.Request) {
 		if !isReady.Load() {
 			http.Error(w, "Not ready", http.StatusServiceUnavailable)
 		}
@@ -124,14 +142,18 @@ Try not to second guess information - if you don't know something or lack inform
 	switch c.ServerMode() {
 	case "sse":
 		log.Printf("Starting server in SSE mode on %s", c.ListenAddr())
-		srv := server.NewSSEServer(s)
+		var sseOptions []server.SSEOption
+		if pathPrefix != "" {
+			sseOptions = append(sseOptions, server.WithStaticBasePath(pathPrefix))
+		}
+		srv := server.NewSSEServer(s, sseOptions...)
 		mux.Handle(srv.CompleteSsePath(), srv.SSEHandler())
 		mux.Handle(srv.CompleteMessagePath(), srv.MessageHandler())
 	case "http":
 		log.Printf("Starting server in HTTP mode on %s", c.ListenAddr())
 		heartBeatOption := server.WithHeartbeatInterval(c.HeartbeatInterval())
 		srv := server.NewStreamableHTTPServer(s, heartBeatOption)
-		mux.Handle("/mcp", srv)
+		mux.Handle(buildPath(pathPrefix, "/mcp"), srv)
 	default:
 		log.Fatalf("Unknown server mode: %s", c.ServerMode())
 	}
