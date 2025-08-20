@@ -1,0 +1,3 @@
+FROM alpine:3.22
+COPY mcp-victorialogs /mcp-victorialogs
+ENTRYPOINT  [ "/mcp-victorialogs" ]
