@@ -1,6 +1,7 @@
 # VictoriaLogs MCP Server
 
 [![Latest Release](https://img.shields.io/github/v/release/VictoriaMetrics-Community/mcp-victorialogs?sort=semver&label=&filter=!*-victorialogs&logo=github&labelColor=gray&color=gray&link=https%3A%2F%2Fgithub.com%2FVictoriaMetrics-Community%2Fmcp-victorialogs%2Freleases%2Flatest)](https://github.com/VictoriaMetrics-Community/mcp-victorialogs/releases)
+[![Trust Score](https://archestra.ai/mcp-catalog/api/badge/quality/VictoriaMetrics-Community/mcp-victorialogs)](https://archestra.ai/mcp-catalog/victoriametrics-community__mcp-victorialogs)
 [![smithery badge](https://smithery.ai/badge/@VictoriaMetrics-Community/mcp-victorialogs)](https://smithery.ai/server/@VictoriaMetrics-Community/mcp-victorialogs)
 ![License](https://img.shields.io/github/license/VictoriaMetrics-Community/mcp-victorialogs?labelColor=green&label=&link=https%3A%2F%2Fgithub.com%2FVictoriaMetrics-Community%2Fmcp-victorialogs%2Fblob%2Fmain%2FLICENSE)
 ![Slack](https://img.shields.io/badge/Join-4A154B?logo=slack&link=https%3A%2F%2Fslack.victoriametrics.com)
