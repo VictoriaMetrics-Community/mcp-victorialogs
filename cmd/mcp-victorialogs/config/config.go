@@ -13,6 +13,7 @@ type Config struct {
 	listenAddr        string
 	entrypoint        string
 	bearerToken       string
+	customHeaders     map[string]string
 	disabledTools     map[string]bool
 	heartbeatInterval time.Duration
 
@@ -27,6 +28,24 @@ func InitConfig() (*Config, error) {
 			tool = strings.Trim(tool, " ,")
 			if tool != "" {
 				disabledToolsMap[tool] = true
+			}
+		}
+	}
+
+	customHeaders := os.Getenv("VL_INSTANCE_HEADERS")
+	customHeadersMap := make(map[string]string)
+	if customHeaders != "" {
+		for _, header := range strings.Split(customHeaders, ",") {
+			header = strings.TrimSpace(header)
+			if header != "" {
+				parts := strings.SplitN(header, "=", 2)
+				if len(parts) == 2 {
+					key := strings.TrimSpace(parts[0])
+					value := strings.TrimSpace(parts[1])
+					if key != "" && value != "" {
+						customHeadersMap[key] = value
+					}
+				}
 			}
 		}
 	}
@@ -49,6 +68,7 @@ func InitConfig() (*Config, error) {
 		listenAddr:        os.Getenv("MCP_LISTEN_ADDR"),
 		entrypoint:        os.Getenv("VL_INSTANCE_ENTRYPOINT"),
 		bearerToken:       os.Getenv("VL_INSTANCE_BEARER_TOKEN"),
+		customHeaders:     customHeadersMap,
 		disabledTools:     disabledToolsMap,
 		heartbeatInterval: heartbeatInterval,
 	}
@@ -116,4 +136,8 @@ func (c *Config) HeartbeatInterval() time.Duration {
 		return 30 * time.Second // Default heartbeat interval
 	}
 	return c.heartbeatInterval
+}
+
+func (c *Config) CustomHeaders() map[string]string {
+	return c.customHeaders
 }

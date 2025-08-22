@@ -148,6 +148,7 @@ MCP Server for VictoriaLogs is configured via environment variables:
 |----------------------------|---------------------------------------------------------|----------|------------------|------------------------|
 | `VL_INSTANCE_ENTRYPOINT`   | URL to VictoriaLogs instance                            | Yes      | -                | -                      |
 | `VL_INSTANCE_BEARER_TOKEN` | Authentication token for VictoriaLogs API               | No       | -                | -                      |
+| `VL_INSTANCE_HEADERS`      | Custom HTTP headers to send with requests (comma-separated key=value pairs) | No       | -                | -                      |
 | `MCP_SERVER_MODE`          | Server operation mode. See [Modes](#modes) for details. | No       | `stdio`          | `stdio`, `sse`, `http` |
 | `MCP_LISTEN_ADDR`          | Address for SSE or HTTP server to listen on             | No       | `localhost:8081` | -                      |
 | `MCP_DISABLED_TOOLS`       | Comma-separated list of tools to disable                | No       | -                | -                      |
@@ -171,6 +172,10 @@ More info about traqnsports you can find in MCP docs:
 ```bash
 # For a public playground
 export VL_INSTANCE_ENTRYPOINT="https://play-vmlogs.victoriametrics.com"
+
+# Custom headers for authentication (e.g., behind a reverse proxy)
+# Expected syntax is key=value separated by commas
+export VL_INSTANCE_HEADERS="<HEADER>=<HEADER_VALUE>,<HEADER>=<HEADER_VALUE>"
 
 # Server mode
 export MCP_SERVER_MODE="sse"
@@ -203,7 +208,8 @@ Go to: `Settings` -> `Cursor Settings` -> `MCP` -> `Add new global MCP server` a
       "command": "/path/to/mcp-victorialogs",
       "env": {
         "VL_INSTANCE_ENTRYPOINT": "<YOUR_VL_INSTANCE>",
-        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>"
+        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>",
+        "VL_INSTANCE_HEADERS": "<HEADER>=<HEADER_VALUE>,<HEADER>=<HEADER_VALUE>"
       }
     }
   }
@@ -223,7 +229,8 @@ Add this to your Claude Desktop `claude_desktop_config.json` file (you can find 
       "command": "/path/to/mcp-victorialogs",
       "env": {
         "VL_INSTANCE_ENTRYPOINT": "<YOUR_VL_INSTANCE>",
-        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>"
+        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>",
+        "VL_INSTANCE_HEADERS": "<HEADER>=<HEADER_VALUE>,<HEADER>=<HEADER_VALUE>"
       }
     }
   }
@@ -239,7 +246,8 @@ Run the command:
 ```sh
 claude mcp add victorialogs -- /path/to/mcp-victorialogs \
   -e VL_INSTANCE_ENTRYPOINT=<YOUR_VL_INSTANCE> \
-  -e VL_INSTANCE_BEARER_TOKEN=<YOUR_VL_BEARER_TOKEN>
+  -e VL_INSTANCE_BEARER_TOKEN=<YOUR_VL_BEARER_TOKEN> \
+  -e VL_INSTANCE_HEADERS="<HEADER>=<HEADER_VALUE>,<HEADER>=<HEADER_VALUE>"
 ```
 
 See [Claude Code MCP docs](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/tutorials#set-up-model-context-protocol-mcp) for more info.
@@ -256,7 +264,8 @@ Add this to your VS Code MCP config file:
       "command": "/path/to/mcp-victorialogs",
       "env": {
         "VL_INSTANCE_ENTRYPOINT": "<YOUR_VL_INSTANCE>",
-        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>"
+        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>",
+        "VL_INSTANCE_HEADERS": "<HEADER>=<HEADER_VALUE>,<HEADER>=<HEADER_VALUE>"
       }
     }
   }
@@ -276,9 +285,10 @@ Add the following to your Zed config file:
         "path": "/path/to/mcp-victorialogs",
         "args": [],
         "env": {
-          "VL_INSTANCE_ENTRYPOINT": "<YOUR_VL_INSTANCE>",
-          "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>"
-        }
+                  "VL_INSTANCE_ENTRYPOINT": "<YOUR_VL_INSTANCE>",
+        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>",
+        "VL_INSTANCE_HEADERS": "<HEADER>=<HEADER_VALUE>,<HEADER>=<HEADER_VALUE>"
+      }
       },
       "settings": {}
     }
@@ -302,7 +312,8 @@ See [Zed MCP docs](https://zed.dev/docs/ai/mcp) for more info.
       "command": "/path/to/mcp-victorialogs",
       "env": {
         "VL_INSTANCE_ENTRYPOINT": "<YOUR_VL_INSTANCE>",
-        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>"
+        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>",
+        "VL_INSTANCE_HEADERS": "<HEADER>=<HEADER_VALUE>,<HEADER>=<HEADER_VALUE>"
       }
     }
   }
@@ -320,7 +331,8 @@ Add the following to your Windsurf MCP config file.
       "command": "/path/to/mcp-victorialogs",
       "env": {
         "VL_INSTANCE_ENTRYPOINT": "<YOUR_VL_INSTANCE>",
-        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>"
+        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>",
+        "VL_INSTANCE_HEADERS": "<HEADER>=<HEADER_VALUE>,<HEADER>=<HEADER_VALUE>"
       }
     }
   }
@@ -345,11 +357,13 @@ You should replace run command in configuration examples above in the following 
           "-i", "--rm",
           "-e", "VL_INSTANCE_ENTRYPOINT",
           "-e", "VL_INSTANCE_BEARER_TOKEN",
+          "-e", "VL_INSTANCE_HEADERS",
           "ghcr.io/victoriametrics-community/mcp-victorialogs",
         ],
       "env": {
         "VL_INSTANCE_ENTRYPOINT": "<YOUR_VL_INSTANCE>",
-        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>"
+        "VL_INSTANCE_BEARER_TOKEN": "<YOUR_VL_BEARER_TOKEN>",
+        "VL_INSTANCE_HEADERS": "<HEADER>=<HEADER_VALUE>,<HEADER>=<HEADER_VALUE>"
       }
     }
   }

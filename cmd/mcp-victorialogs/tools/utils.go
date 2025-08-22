@@ -31,6 +31,12 @@ func CreateSelectRequest(ctx context.Context, cfg *config.Config, tcr mcp.CallTo
 	if bearerToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
 	}
+
+	// Add custom headers from configuration
+	for key, value := range cfg.CustomHeaders() {
+		req.Header.Set(key, value)
+	}
+
 	req.Header.Set("AccountID", accountID)
 	req.Header.Set("ProjectID", projectID)
 
@@ -51,6 +57,12 @@ func CreateAdminRequest(ctx context.Context, cfg *config.Config, tcr mcp.CallToo
 	if bearerToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
 	}
+
+	// Add custom headers from configuration
+	for key, value := range cfg.CustomHeaders() {
+		req.Header.Set(key, value)
+	}
+
 	return req, nil
 }
 
