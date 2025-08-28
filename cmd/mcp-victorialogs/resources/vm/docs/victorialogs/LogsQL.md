@@ -338,6 +338,10 @@ It is possible to specify generic offset for the selected time range by appendin
 - `_time:2023-07Z offset 5h30m` matches logs on July, 2023 by UTC with offset 5h30m.
 - `_time:[2023-02-01Z, 2023-03-01Z) offset 1w` matches logs the week before the time range `[2023-02-01Z, 2023-03-01Z)` by UTC.
 
+See also [`time_offset` option](#query-options), which allows applying the given offset to all the filters on `_time` field without the need to modify the query.
+
+See also [`time_add` pipe](#time_add-pipe), which allows adding the given duration to the given log field.
+
 Performance tips:
 
 - It is recommended specifying the smallest possible time range during the search, since it reduces the amounts of log entries, which need to be scanned during the query.
@@ -1486,6 +1490,7 @@ LogsQL supports the following pipes:
 - [`filter`](#filter-pipe) applies additional [filters](#filters) to results.
 - [`first`](#first-pipe) returns the first N logs after sorting them by the given [log fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model).
 - [`format`](#format-pipe) formats output field from input [log fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model).
+- [`generate_sequence`](#generate_sequence-pipe) generates output logs with messages containing integer sequence.
 - [`join`](#join-pipe) joins query results by the given [log fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model).
 - [`json_array_len`](#json_array_len-pipe) returns the length of JSON array stored at the given [log field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model).
 - [`hash`](#hash-pipe) returns the hash over the given [log field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model) value.
@@ -1504,6 +1509,7 @@ LogsQL supports the following pipes:
 - [`stats`](#stats-pipe) calculates various stats over the selected logs.
 - [`stream_context`](#stream_context-pipe) allows selecting surrounding logs in front and after the matching logs
   per each [log stream](https://docs.victoriametrics.com/victorialogs/keyconcepts/#stream-fields).
+- [`time_add`](#time_add-pipe) adds the given duration to the given field containing [RFC3339 time](https://www.rfc-editor.org/rfc/rfc3339).
 - [`top`](#top-pipe) returns top `N` field sets with the maximum number of matching logs.
 - [`union`](#union-pipe) returns results from multiple LogsQL queries.
 - [`uniq`](#uniq-pipe) returns unique log entries.
@@ -2193,6 +2199,26 @@ only if `ip` and `host` [fields](https://docs.victoriametrics.com/victorialogs/k
 ```logsql
 _time:5m | format if (ip:* and host:*) "request from <ip>:<host>" as message
 ```
+
+### generate_sequence pipe
+
+The `<q> | generate_sequence <N>` [pipe](#pipes) skips all the `<q>` results and generates `<N>` output logs
+with the [`_msg` field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#message-field) containing integer sequence starting from 0 and ending at `N-1`.
+
+This pipe is useful for testing and debugging of the LogsQL pipes. For example, the following query generates 1000 random integers in the range `[0..9]`
+and collects the statistics on the number of hits per each random number:
+
+```logsql
+* | generate_sequence 1000
+    | math round(rand()*10) as rand_num
+    | stats by (rand_num) count() hits
+    | sort by (rand_num)
+```
+
+See also:
+
+- [`rand()` function from `math` pipe](#math-pipe)
+- [`stats` pipe](#stats-pipe)
 
 ### join pipe
 
@@ -3035,6 +3061,35 @@ The `| stream_context` [pipe](#pipes) must go first just after the [filters](#fi
 See also:
 
 - [stream filter](#stream-filter)
+
+### time_add pipe
+
+`<q> | time_add <duration>` adds the given `<duration>` to the [`_time` field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#time-field).
+The `<duration>` can be in any format described [here](#duration-values).
+
+For example, the following query adds one hour to `_time` field in the selected logs:
+
+```logsql
+_time:5m | time_add 1h
+```
+
+Specify negative duration for subtracting it from the `_time` field:
+
+```logsql
+_time:5m | time_add -1h
+```
+
+Add `at <field_name>` to the end of the `time_add` pipe in order to add the given `<duration>` to the [log field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model)
+with the given `<field_name>`. For example, the following query adds one week to the field `transaction_time`:
+
+```logsql
+_time:5m | time_add 1w at transaction_time
+```
+
+See also:
+
+- [`_time` filter](#time-filter).
+- [`time_offset` option](#query-options).
 
 ### top pipe
 
@@ -4182,6 +4237,16 @@ VictoriaLogs supports the following options, which can be passed in the beginnin
 
   ```logsql
   options(concurrency=2) _time:1d | count_uniq(user_id)
+  ```
+
+- `time_offset` – subtracts the given offset from all the [time filters](#time-filter) in the query,
+  and then adds the given offset to the selected [`_time` field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#time-field) values
+  before passing them to query [pipes](#pipes). Allows comparing query results for the same duration at different offsets.
+  Accepts any [duration value](#duration-values) like `12h`, `1d`, `1y`. For example, the following query returns the number of logs with `error` [words](#word)
+  over the last hour 7 days ago.
+
+  ```logsql
+  options(time_offset=7d) _time:1h error | stats count() as 'errors_7d_ago'
   ```
 
 - `ignore_global_time_filter` - allows ignoring time filter from `start` and `end` args of [HTTP querying API](https://docs.victoriametrics.com/victorialogs/querying/#http-api)
