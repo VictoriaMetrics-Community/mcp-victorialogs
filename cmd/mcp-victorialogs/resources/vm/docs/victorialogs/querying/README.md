@@ -1,3 +1,11 @@
+---
+build:
+  list: never
+  publishResources: false
+  render: never
+sitemap:
+  disable: true
+---
 [VictoriaLogs](https://docs.victoriametrics.com/victorialogs/) can be queried with [LogsQL](https://docs.victoriametrics.com/victorialogs/logsql/)
 via the following ways:
 
@@ -54,7 +62,8 @@ By default the `/select/logsql/query` returns all the log entries matching the g
 - By closing the response stream at any time. VictoriaLogs stops query execution and frees all the resources occupied by the request as soon as it detects closed client connection.
   So it is safe running [`*` query](https://docs.victoriametrics.com/victorialogs/logsql/#any-value-filter), which selects all the logs, even if trillions of logs are stored in VictoriaLogs.
 - By specifying the maximum number of log entries, which can be returned in the response via `limit` query arg. For example, the following command returns
-  up to 10 most recently added log entries with the `error` [word](https://docs.victoriametrics.com/victorialogs/logsql/#word)
+  up to 10 log entries with the biggest [`_time`](https://docs.victoriametrics.com/victorialogs/keyconcepts/#time-field) values
+  with the `error` [word](https://docs.victoriametrics.com/victorialogs/logsql/#word)
   in the [`_msg` field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#message-field):
 
   ```sh
@@ -71,6 +80,10 @@ By default the `/select/logsql/query` returns all the log entries matching the g
 - By adding [`_time` filter](https://docs.victoriametrics.com/victorialogs/logsql/#time-filter). The time range for the query can be specified via optional
   `start` and `end` query args formatted according to [these docs](https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#timestamp-formats).
 - By adding more specific [filters](https://docs.victoriametrics.com/victorialogs/logsql/#filters) to the query, which select lower number of logs.
+
+If the `limit=N` query arg is passed to `/select/logsql/query`, then it may also accept the `offset=M` query arg. This allows building a simple pagination by selecting
+up to `<N>` matching logs with the biggest [`_time`](https://docs.victoriametrics.com/victorialogs/keyconcepts/#time-field) values on the selected time range,
+while skipping `<M>` logs with the biggest `_time` value.
 
 The `/select/logsql/query` endpoint returns [a stream of JSON lines](https://jsonlines.org/),
 where each line contains JSON-encoded log entry in the form `{field1="value1",...,fieldN="valueN"}`.
@@ -110,8 +123,10 @@ for log messages at `(AccountID=12, ProjectID=34)` tenant:
 curl http://localhost:9428/select/logsql/query -H 'AccountID: 12' -H 'ProjectID: 34' -d 'query=error'
 ```
 
-The number of requests to `/select/logsql/query` can be [monitored](https://docs.victoriametrics.com/victorialogs/#monitoring)
-with `vl_http_requests_total{path="/select/logsql/query"}` metric.
+The number of requests to `/select/logsql/query` can be [monitored](https://docs.victoriametrics.com/victorialogs/metrics/)
+with [`vl_http_requests_total{path="/select/logsql/query"}`](https://docs.victoriametrics.com/victorialogs/metrics/#vl_http_requests_total) metric.
+
+The `/select/logsql/query` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
 
 See also:
 
@@ -190,8 +205,8 @@ for `(AccountID=12, ProjectID=34)` tenant:
 curl -N http://localhost:9428/select/logsql/tail -H 'AccountID: 12' -H 'ProjectID: 34' -d 'query=error'
 ```
 
-The number of currently executed live tailing requests to `/select/logsql/tail` can be [monitored](https://docs.victoriametrics.com/victorialogs/#monitoring)
-with `vl_live_tailing_requests` metric.
+The number of currently executed live tailing requests to `/select/logsql/tail` can be [monitored](https://docs.victoriametrics.com/victorialogs/metrics/)
+with [`vl_live_tailing_requests`](https://docs.victoriametrics.com/victorialogs/metrics/#vl_live_tailing_requests) metric.
 
 See also:
 
@@ -312,6 +327,8 @@ for `(AccountID=12, ProjectID=34)` tenant:
 curl http://localhost:9428/select/logsql/hits -H 'AccountID: 12' -H 'ProjectID: 34' -d 'query=error'
 ```
 
+The `/select/logsql/hits` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
+
 See also:
 
 - [Extra filters](#extra-filters)
@@ -406,6 +423,8 @@ Add `keep_const_fields=1` query arg if you need such log fields:
 curl http://localhost:9428/select/logsql/facets -d 'query=_time:1h' -d 'keep_const_fields=1'
 ```
 
+The `/select/logsql/facets` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
+
 See also:
 
 - [Extra filters](#extra-filters)
@@ -475,6 +494,8 @@ Below is an example JSON output returned from this endpoint:
 ```
 
 The `/select/logsql/stats_query` API is useful for generating Prometheus-compatible alerts and calculating recording rules results.
+
+The `/select/logsql/stats_query` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
 
 See also:
 
@@ -570,6 +591,8 @@ Below is an example JSON output returned from this endpoint:
 
 The `/select/logsql/stats_query_range` API is useful for generating Prometheus-compatible graphs in Grafana.
 
+The `/select/logsql/stats_query_range` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
+
 See also:
 
 - [Extra filters](#extra-filters)
@@ -629,6 +652,8 @@ for `(AccountID=12, ProjectID=34)` tenant:
 curl http://localhost:9428/select/logsql/stream_ids -H 'AccountID: 12' -H 'ProjectID: 34' -d 'query=_time:5m'
 ```
 
+The `/select/logsql/stream_ids` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
+
 See also:
 
 - [Extra filters](#extra-filters)
@@ -687,6 +712,8 @@ for `(AccountID=12, ProjectID=34)` tenant:
 curl http://localhost:9428/select/logsql/streams -H 'AccountID: 12' -H 'ProjectID: 34' -d 'query=_time:5m'
 ```
 
+The `/select/logsql/streams` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
+
 See also:
 
 - [Extra filters](#extra-filters)
@@ -742,6 +769,8 @@ for `(AccountID=12, ProjectID=34)` tenant:
 curl http://localhost:9428/select/logsql/stream_field_names -H 'AccountID: 12' -H 'ProjectID: 34' -d 'query=_time:5m'
 ```
 
+The `/select/logsql/stream_field_names` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
+
 See also:
 
 - [Extra filters](#extra-filters)
@@ -796,6 +825,8 @@ for `(AccountID=12, ProjectID=34)` tenant:
 curl http://localhost:9428/select/logsql/stream_field_values -H 'AccountID: 12' -H 'ProjectID: 34' -d 'query=_time:5m'
 ```
 
+The `/select/logsql/stream_field_values` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
+
 See also:
 
 - [Extra filters](#extra-filters)
@@ -849,6 +880,8 @@ for `(AccountID=12, ProjectID=34)` tenant:
 ```sh
 curl http://localhost:9428/select/logsql/field_names -H 'AccountID: 12' -H 'ProjectID: 34' -d 'query=_time:5m'
 ```
+
+The `/select/logsql/field_names` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
 
 See also:
 
@@ -909,6 +942,8 @@ for `(AccountID=12, ProjectID=34)` tenant:
 curl http://localhost:9428/select/logsql/field_values -H 'AccountID: 12' -H 'ProjectID: 34' -d 'query=_time:5m'
 ```
 
+The `/select/logsql/field_values` returns `VL-Request-Duration-Seconds` HTTP header in the response, which contains the duration of the query until the first response byte.
+
 See also:
 
 - [Extra filters](#extra-filters)
@@ -960,7 +995,8 @@ See also [command line interface](#command-line).
 
 ## Visualization in Grafana
 
-[VictoriaLogs Grafana Datasource](https://docs.victoriametrics.com/victorialogs/victorialogs-datasource/) allows you to query and visualize VictoriaLogs data in Grafana
+[VictoriaLogs Grafana datasource](https://docs.victoriametrics.com/victorialogs/victorialogs-datasource/) allows you to query and visualize VictoriaLogs data in Grafana.
+Try [playground for VictoriaLogs Grafana datasource](https://play-grafana.victoriametrics.com/d/be5zidev72m80f/k8s-logs-via-victorialogs).
 
 ## Command-line
 

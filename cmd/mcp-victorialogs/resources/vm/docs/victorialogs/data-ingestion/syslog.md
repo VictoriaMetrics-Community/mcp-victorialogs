@@ -116,6 +116,21 @@ starts VictoriaLogs, which accepts TLS-encrypted syslog messages at TCP port 651
 ./victoria-logs -syslog.listenAddr.tcp=:6514 -syslog.tls -syslog.tlsCertFile=/path/to/tls/cert -syslog.tlsKeyFile=/path/to/tls/key
 ```
 
+See also [mTLS docs](#mtls).
+
+### mTLS
+
+[Enterprise version](https://docs.victoriametrics.com/victoriametrics/enterprise/) of VictoriaLogs can verify
+client TLS certificates (aka [mTLS](https://en.wikipedia.org/wiki/Mutual_authentication)) if `-syslog.mtls` command-line flag is set
+for the corresponding `-syslog.listenAddr.tcp` additionally to `-syslog.tls` command-line flag.
+
+By default system-wide [root CA certificates](https://en.wikipedia.org/wiki/Root_certificate) are used for the client certificate versification.
+Set `-syslog.mtlsCAFile` to the path with custom root CA certificates if needed. The `-syslog.mtlsCAFile` can be set individually per every
+`-syslog.listenAddr.tcp`.
+
+[Enterprise version of VictoriaLogs](https://docs.victoriametrics.com/victoriametrics/enterprise/) can be downloaded and evaluated for free
+from [the releases page](https://github.com/VictoriaMetrics/VictoriaLogs/releases/latest). See [how to request a free trial license](https://victoriametrics.com/products/enterprise/trial/).
+
 ## Compression
 
 By default VictoriaLogs accepts uncompressed log messages in Syslog format at `-syslog.listenAddr.tcp` and `-syslog.listenAddr.udp` addresses.
