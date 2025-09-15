@@ -3,7 +3,7 @@
 github.com/RoaringBitmap/roaring/v2
 github.com/RoaringBitmap/roaring/v2/internal
 github.com/RoaringBitmap/roaring/v2/roaring64
-# github.com/VictoriaMetrics/metrics v1.39.1
+# github.com/VictoriaMetrics/metrics v1.40.1
 ## explicit; go 1.18
 github.com/VictoriaMetrics/metrics
 # github.com/bahlo/generic-list-go v0.2.0

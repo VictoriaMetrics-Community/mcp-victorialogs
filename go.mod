@@ -3,7 +3,7 @@ module github.com/VictoriaMetrics-Community/mcp-victorialogs
 go 1.24.4
 
 require (
-	github.com/VictoriaMetrics/metrics v1.39.1
+	github.com/VictoriaMetrics/metrics v1.40.1
 	github.com/blevesearch/bleve/v2 v2.5.3
 	github.com/mark3labs/mcp-go v0.39.1
 	github.com/tmc/langchaingo v0.1.13
