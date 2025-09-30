@@ -9,19 +9,22 @@ sitemap:
 VictoriaLogs is [open source](https://github.com/VictoriaMetrics/VictoriaLogs/) user-friendly database for logs
 from [VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics/).
 
+## Features
+
 VictoriaLogs provides the following features:
 
 - It is resource-efficient and fast. It uses up to 30x less RAM and up to 15x less disk space than other solutions such as Elasticsearch and Grafana Loki.
-  See [these benchmarks](#benchmarks) and [this article](https://itnext.io/how-do-open-source-solutions-for-logs-work-elasticsearch-loki-and-victorialogs-9f7097ecbc2f) for details.
-  See also [the post from a happy user, who replaced 27-node Elasticsearch with a single-node VictoriaLogs](https://aus.social/@phs/114583927679254536).
+  See [these benchmarks](https://docs.victoriametrics.com/victorialogs/#benchmarks) and [this article](https://itnext.io/how-do-open-source-solutions-for-logs-work-elasticsearch-loki-and-victorialogs-9f7097ecbc2f) for details.
+  See also [the post from a happy user, who replaced 27-node Elasticsearch with a single-node VictoriaLogs](https://aus.social/@phs/114583927679254536),
+  [this post from happy users, who replaced Loki with VictoriaLogs](https://www.truefoundry.com/blog/victorialogs-vs-loki)
+  and [this post from a happy user who replaced grep with VictoriaLogs](https://chronicles.mad-scientist.club/tales/grepping-logs-remains-terrible/).
 - VictoriaLogs' capacity and performance scales linearly with the available resources (CPU, RAM, disk IO, disk space).
   It runs smoothly on Raspberry PI and on servers with hundreds of CPU cores and terabytes of RAM.
-  It can scale horizontally to many nodes in [cluster mode](https://docs.victoriametrics.com/victorialogs/cluster/).
+  It can scale horizontally to hundreds of nodes in [cluster mode](https://docs.victoriametrics.com/victorialogs/cluster/).
 - It can accept logs from popular log collectors. See [these docs](https://docs.victoriametrics.com/victorialogs/data-ingestion/).
-- It is much easier to set up and operate compared to Elasticsearch and Grafana Loki, since it is basically zero-config.
+- It is much easier to set up and operate compared to Elasticsearch and Grafana Loki, since it is a single zero-config executable.
   See [these docs](https://docs.victoriametrics.com/victorialogs/quickstart/).
-- It provides easy yet powerful query language with full-text search capabilities across
-  all the [log fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model).
+- It provides easy yet powerful query language, which supports fast full-text search, fast advanced analytics and fast data extraction and transformation at query time.
   See [LogsQL docs](https://docs.victoriametrics.com/victorialogs/logsql/).
 - It provides [built-in web UI](https://docs.victoriametrics.com/victorialogs/querying/#web-ui) for logs' exploration.
 - It provides [Grafana plugin](https://docs.victoriametrics.com/victorialogs/victorialogs-datasource/) for building arbitrary dashboards in Grafana.
@@ -30,11 +33,12 @@ VictoriaLogs provides the following features:
   See [these docs](https://docs.victoriametrics.com/victorialogs/querying/#command-line) for details.
 - It support [log fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#data-model) with high cardinality (e.g. high number of unique values) such as `trace_id`, `user_id` and `ip`.
 - It is optimized for logs with hundreds of fields (aka [`wide events`](https://jeremymorrell.dev/blog/a-practitioners-guide-to-wide-events/)).
-- It supports multitenancy - see [these docs](#multitenancy).
+- It supports multitenancy - see [these docs](https://docs.victoriametrics.com/victorialogs/#multitenancy).
 - It supports out-of-order logs' ingestion aka backfilling.
 - It supports live tailing for newly ingested logs. See [these docs](https://docs.victoriametrics.com/victorialogs/querying/#live-tailing).
 - It supports selecting surrounding logs in front and after the selected logs. See [these docs](https://docs.victoriametrics.com/victorialogs/logsql/#stream_context-pipe).
 - It supports alerting - see [these docs](https://docs.victoriametrics.com/victorialogs/vmalert/).
+- It fits well [RUM](https://en.wikipedia.org/wiki/Real_user_monitoring) and [SIEM](https://en.wikipedia.org/wiki/Security_information_and_event_management) use cases.
 
 See also [articles about VictoriaLogs](https://docs.victoriametrics.com/victorialogs/articles/).
 
@@ -45,7 +49,8 @@ you can join it via [Slack Inviter](https://slack.victoriametrics.com/).
 See [quick start docs](https://docs.victoriametrics.com/victorialogs/quickstart/) for start working with VictoriaLogs.
 
 If you want playing with VictoriaLogs web UI and [LogsQL](https://docs.victoriametrics.com/victorialogs/logsql/) query language,
-then go to [VictoriaLogs demo playground](https://play-vmlogs.victoriametrics.com/) and to [Grafana plugin playground for VictoriaLogs](https://play-grafana.victoriametrics.com/d/be5zidev72m80f/k8s-logs-via-victorialogs).
+then go to [VictoriaLogs demo playground](https://play-vmlogs.victoriametrics.com/) and
+to [Grafana plugin playground for VictoriaLogs](https://play-grafana.victoriametrics.com/d/be5zidev72m80f/k8s-logs-via-victorialogs).
 
 ## Tuning
 
@@ -105,7 +110,7 @@ For example, the following command starts VictoriaLogs with the retention of 8 w
 /path/to/victoria-logs -retentionPeriod=8w
 ```
 
-See also [retention by disk space usage](#retention-by-disk-space-usage).
+See also [retention by disk space usage](https://docs.victoriametrics.com/victorialogs/#retention-by-disk-space-usage).
 
 VictoriaLogs stores the [ingested](https://docs.victoriametrics.com/victorialogs/data-ingestion/) logs in per-day partition directories.
 It automatically drops partition directories outside the configured retention.
@@ -138,8 +143,8 @@ VictoriaLogs can be configured to automatically drop older per-day partitions ba
 ### Absolute disk space limit
 
 Use the `-retention.maxDiskSpaceUsageBytes` command-line flag to set a fixed threshold. VictoriaLogs will drop old per-day partitions
-if the total size of data at [`-storageDataPath` directory](#storage) becomes bigger than the specified limit.
-For example, the following command starts VictoriaLogs, which drops old per-day partitions if the total [storage](#storage) size becomes bigger than `100GiB`:
+if the total size of data at [`-storageDataPath` directory](https://docs.victoriametrics.com/victorialogs/#storage) becomes bigger than the specified limit.
+For example, the following command starts VictoriaLogs, which drops old per-day partitions if the total [storage](https://docs.victoriametrics.com/victorialogs/#storage) size becomes bigger than `100GiB`:
 
 ```sh
 /path/to/victoria-logs -retention.maxDiskSpaceUsageBytes=100GiB
@@ -148,7 +153,7 @@ For example, the following command starts VictoriaLogs, which drops old per-day 
 ### Percentage-based disk space limit
 
 Use the `-retention.maxDiskUsagePercent` command-line flag to set a dynamic threshold based on the filesystem's total capacity.
-VictoriaLogs will drop old per-day partitions if the filesystem containing the [`-storageDataPath` directory](#storage) exceeds the specified percentage usage.
+VictoriaLogs will drop old per-day partitions if the filesystem containing the [`-storageDataPath` directory](https://docs.victoriametrics.com/victorialogs/#storage) exceeds the specified percentage usage.
 For example, the following command starts VictoriaLogs, which drops old per-day partitions if the filesystem usage exceeds 80%:
 
 ```sh
@@ -168,7 +173,7 @@ VictoriaLogs keeps at least two last days of data in order to guarantee that the
 This means that the total disk space usage may exceed the configured threshold if the size of the last two days of data
 exceeds the limit.
 
-The [`-retentionPeriod`](#retention) is applied independently to the disk space usage limits. This means that
+The [`-retentionPeriod`](https://docs.victoriametrics.com/victorialogs/#retention) is applied independently to the disk space usage limits. This means that
 VictoriaLogs automatically drops logs older than 7 days by default if only a disk space usage flag is set.
 Set the `-retentionPeriod` to some big value (e.g. `100y` - 100 years) if logs shouldn't be dropped because of time-based retention.
 For example:
@@ -193,7 +198,7 @@ For example, the following command starts VictoriaLogs, which stores the data at
 ```
 
 VictoriaLogs automatically creates the `-storageDataPath` directory on the first run if it is missing. VictoriaLogs stores logs
-per every day into a spearate subdirectory (aka per-day partition). See [partitions lifecycle](#partitions-lifecycle) for details.
+per every day into a spearate subdirectory (aka per-day partition). See [partitions lifecycle](https://docs.victoriametrics.com/victorialogs/#partitions-lifecycle) for details.
 
 VictoriaLogs switches to cluster mode if `-storageNode` command-line flag is specified:
 
@@ -208,9 +213,9 @@ The ingested logs are stored in per-day subdirectories (partitions) at the `<-st
 For example, the directory with the name `20250418` contains logs with [`_time` field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#time-field) values
 at April 18, 2025 UTC. This allows flexible data management.
 
-For example, old per-day data is automatically and quickly deleted according to the provided [retention policy](#retention) by removing the corresponding per-day subdirectory (partition).
+For example, old per-day data is automatically and quickly deleted according to the provided [retention policy](https://docs.victoriametrics.com/victorialogs/#retention) by removing the corresponding per-day subdirectory (partition).
 
-VictoriaLogs supports dynamic attach and detach of per-day partitions, by using the following HTTP API endpoints:
+VictoriaLogs supports the following HTTP API endpoints at `victoria-logs:9428` address for managing partitions:
 
 - `/internal/partition/attach?name=YYYYMMDD` - attaches the partition directory with the given name `YYYYMMDD` to VictoriaLogs,
   so it becomes visible for querying and can be used for data ingestion.
@@ -218,23 +223,28 @@ VictoriaLogs supports dynamic attach and detach of per-day partitions, by using 
 - `/internal/partition/detach?name=YYYYMMDD` - detaches the partition directory with the given name `YYYYMMDD` from VictoriaLogs,
   so it is no longer visible for querying and cannot be used for data ingestion.
   The `/internal/partition/detach` endpoint waits until all the concurrently executed queries stop reading the data from the detached partition
-  before returning. This allows safe manipulion of the detached partitions by external tools on disk after returning from the `/internal/partition/detach` endpoint.
+  before returning. This allows safe on-disk manipulions of the detached partitions by external tools after returning from the `/internal/partition/detach` endpoint.
+  Detached partitions are automatically attached after VictoriaLogs restart if the corresponding subdirectories at `<-storageDataPath>/partitions/` aren't removed.
+- `/internal/partition/list` - returns JSON-encoded list of currently active partitions, which can be passed to `/internal/partition/detach` endpoint via `name` query arg.
+- `/internal/partition/snapshot/create?name=YYYYMMDD` - creates a [snapshot](https://medium.com/@valyala/how-victoriametrics-makes-instant-snapshots-for-multi-terabyte-time-series-data-e1f3fb0e0282)
+  for the partition for the given day `YYYYMMDD`. The endpoint returns a JSON string with the absolute filesystem path to the created snapshot. It is safe to make backups from
+  the created snapshots according to [these instructions](https://docs.victoriametrics.com/victorialogs/#backup-and-restore). It is safe removing the created snapshots with `rm -rf` command.
+  It is recommended removing unneeded snapshots on a regular basis in order to free up storage space occupied by these snapshots.
+- `/internal/partition/snapshot/list` - returns JSON-encoded list of absolute paths to per-day partition snapshots created via `/internal/partition/snapshot/create`.
 
-These endpoints can be protected from unauthorized access via `-partitionManageAuthKey` [command-line flag](#list-of-command-line-flags).
-
-These endpoints can be used for building a flexible per-partition backup / restore schemes as described [in these docs](#backup-and-restore).
+These endpoints can be protected from unauthorized access via `-partitionManageAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).
 
 These endpoints can be used also for setting up automated multi-tier storage schemes where recently ingested logs are stored to VictoriaLogs instances
 with fast NVMe (SSD) disks, while historical logs are gradully migrated to VictoriaLogs instances with slower, but bigger and less expensive HDD disks.
 This scheme can be implemented with the following simple cron job, which must run once per day:
 
-1. To copy per-day partition for the older day stored at NVMe from NVMe to HDD, with the help of [`rsync`](https://en.wikipedia.org/wiki/Rsync).
-1. To detach the copied partition from the VictoriaLogs with NVMe.
-1. To run the `rsync` on the copied partition again in order sync the possible changes in the partition during the previous copy.
-1. To attach the copied partition to the VictoriaLogs with HDD.
-1. To delete the copied partition directory from the VictoriaLogs with NVMe.
+1. To make a snapshot for the older day stored at NVMe via `/internal/partition/snapshot/create?name=YYYYMMDD` endpoint.
+1. To copy the snapshot to the `<-storageDataPath>/partitions/YYYYMMDD` directory at VictoriaMetrics with HDD via [`rsync`](https://en.wikipedia.org/wiki/Rsync).
+1. To detach the copied partition from the VictoriaLogs with NVMe via `/internal/partition/detach?name=YYYYMMDD` endpoint.
+1. To attach the copied partition to the VictoriaLogs with HDD via `/internal/partition/attach?name=YYYYMMDD` endpoint.
+1. To delete the copied partition directory from the VictoriaLogs with NVMe via `rm -rf <-storageDataPath>/partitions/YYYYMMDD` command.
 
-All the VictoriaLogs with NVMe and HDD disks can be queried simultaneously via `vlselect` component of [VictoriaLogs cluster](https://docs.victoriametrics.com/victorialogs/cluster/),
+All the VictoriaLogs instances with NVMe and HDD disks can be queried simultaneously via `vlselect` component of [VictoriaLogs cluster](https://docs.victoriametrics.com/victorialogs/cluster/),
 since [single-node VictoriaLogs instances can be a part of cluster](https://docs.victoriametrics.com/victorialogs/cluster/#single-node-and-cluster-mode-duality).
 
 ## Forced merge
@@ -250,7 +260,7 @@ merge for September 21, 2024 partition. The call to `/internal/force_merge` retu
 Forced merges may require additional CPU, disk IO and storage space resources. It is unnecessary to run forced merge under normal conditions,
 since VictoriaLogs automatically performs optimal merges in background when new data is ingested into it.
 
-The `/internal/force_merge` endpoint can be protected from unauthorized access via `-forceMergeAuthKey` [command-line flag](#list-of-command-line-flags).
+The `/internal/force_merge` endpoint can be protected from unauthorized access via `-forceMergeAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).
 
 ## Forced flush
 
@@ -263,23 +273,29 @@ It isn't recommended requesting the `/internal/force_flush` HTTP endpoint on a r
 and slows down data ingestion. It is expected that the `/internal/force_flush` is requested in automated tests, which need querying
 the recently ingested data.
 
-The `/internal/force_flush` endpoint can be protected from unauthorized access via `-forceFlushAuthKey` [command-line flag](#list-of-command-line-flags).
+The `/internal/force_flush` endpoint can be protected from unauthorized access via `-forceFlushAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).
 
 ## High Availability
 
 ### High Availability (HA) Setup with VictoriaLogs Single-Node Instances
 
-This schema outlines how to configure a High Availability (HA) setup using VictoriaLogs Single-Node instances. The setup consists of the following components:
+The setup consists of the following components:
 
-- **Log Collector**: The log collector should support multiplexing incoming data to multiple outputs (destinations). Popular log collectors like [Fluent Bit](https://docs.fluentbit.io/manual/concepts/data-pipeline/router), [Logstash](https://www.elastic.co/guide/en/logstash/current/output-plugins.html), [Fluentd](https://docs.fluentd.org/output/copy), and [Vector](https://vector.dev/docs/reference/configuration/sinks/) already offer this capability. Refer to their documentation for configuration details.
+- **Log Collector**: The log collector should support sending the same collected data to multiple destinations (aka replication).
+It is recommended to use [vlagent](https://docs.victoriametrics.com/victorialogs/vlagent/). Otherp popular log collectors also provide this ability:
+- [How to setup replication at FluentBit](https://docs.fluentbit.io/manual/concepts/data-pipeline/router)
+- [How to setup replication at Logstash](https://www.elastic.co/guide/en/logstash/current/output-plugins.html)
+- [How to setup replication at Fluentd](https://docs.fluentd.org/output/copy)
+- [How to setup replication at Vector](https://vector.dev/docs/reference/configuration/sinks/)
 
-- **VictoriaLogs Single-Node Instances**: Use two or more instances to achieve HA.
+- **VictoriaLogs Single-Node Instances**: send copies of the collected logs to multiple instances of VictoriaLogs in distinct availability zones to achieve HA.
 
-- **[vmauth](https://docs.victoriametrics.com/victoriametrics/vmauth/#load-balancing) or Load Balancer**: Used for reading data from one of the replicas to ensure balanced and redundant access.
+- **[vmauth](https://docs.victoriametrics.com/victoriametrics/vmauth/#load-balancing)**: query logs via `vmauth` - it balances incoming queries among available VictoriaLogs instances,
+  and automatically re-routes requests to healthy backends if some of the instances are temporarily unavailable.
 
 ![VictoriaLogs Single-Node Instance High-Availability schema](ha-victorialogs-single-node.webp)
 
-Here are the working example of HA configuration for VictoriaLogs using Docker Compose:
+Here are the working examples of HA configuration for VictoriaLogs using Docker Compose:
 
 - [Fluent Bit + VictoriaLogs Single-Node + vmauth](https://github.com/VictoriaMetrics/VictoriaLogs/tree/master/deployment/docker/victorialogs/fluentbit/jsonline-ha)
 - [Logstash + VictoriaLogs Single-Node + vmauth](https://github.com/VictoriaMetrics/VictoriaLogs/tree/master/deployment/docker/victorialogs/logstash/jsonline-ha)
@@ -287,43 +303,41 @@ Here are the working example of HA configuration for VictoriaLogs using Docker C
 
 ## Backup and restore
 
-VictoriaLogs stores data into independent per-day partitions. Every partition is stored in a distinct directory under `<-storageDataPath>/partitions/` directory.
-See [these docs](#partitions-lifecycle) for details. It is safe to backup separate partitions with the [`rsync`](https://en.wikipedia.org/wiki/Rsync) command.
+VictoriaLogs stores data into independent per-day partitions. Every partition is stored in a separate directory - `<-storageDataPath>/partitions/YYYYMMDD`.
 
-The files in VictoriaLogs have the following properties:
+The following steps must be performed to make a backup of the given `YYYYMMDD` partition:
 
-- All the data files are immutable. Small metadata files can be modified.
-- Old data files are periodically merged into new data files.
+1. To create a snapshot for the given per-day partition via `/internal/partition/snapshot/create?name=YYYYMMDD` HTTP endpoint (see [partitions lifecycle](https://docs.victoriametrics.com/victorialogs/#partitions-lifecycle) docs).
+   This endpoint returns an absolute filesystem path to the created snapshot - `<path-to-snapshot>`.
 
-Therefore, for a complete **backup** of some per-day partition or a set of partitions, you need to run the `rsync` command **twice**.
+1. To backup the created snapshot with [`rsync`](https://en.wikipedia.org/wiki/Rsync):
 
-```sh
-# example of rsync to remote host
-rsync -avh --progress --delete <path-to-victorialogs-data> <username>@<host>:<path-to-victorialogs-backup>
-```
+   ```sh
+   rsync -avh --progress --delete <path-to-snapshot> <username>@<host>:<path-to-backup>/YYYYMMDD
+   ```
 
-The `--delete` option is required in the command above, since it ensures that the backup contains the full copy of the original data and doesn't contain superfluous files.
+   The `--delete` option is required in the command above in order to ensures that the backup contains the full copy of the original data without superfluous files.
 
-The first `rsync` will sync the majority of the data, which can be time-consuming.
-As VictoriaLogs continues to run, new data is ingested, potentially creating new data files and modifying metadata files.
+1. To remove the snapshot with `rm -rf <path-to-snapshot>` command. It is important to remove unneeded snapshots in order to free up storage space.
 
-The second `rsync` **requires a brief detaching of the backed up partitions** to ensure all data and metadata files are consistent and are no longer changing.
-See [how to detach and attach partitions without the need to stop VictoriaLogs](#partitions-lifecycle).
-This `rsync` will cover any changes that have occurred since the last `rsync` and should not take a significant amount of time.
 
-To **restore** from a backup, simply `rsync` the backup from a remote location to the original partition directories and then [attach them](#partitions-lifecycle)
-without the need to restart VictoriaLogs. Another option is to `rsync` the partitions from the backup while VictoriaLogs isn't running and then start VictoriaLogs.
-It will automatically discover and open all the partitions under the `<-storageDataPath>/partitions/` directory.
+The following steps must be performed for restoring the partition data from backup:
 
-```sh
-# example of rsync from remote backup to local
-rsync -avh --progress --delete <username>@<host>:<path-to-victorialogs-backup> <path-to-victorialogs-data>
-```
+1. To stop VictoriaLogs instance or to detach the `YYYYMMDD` partition, which is going to be restored from backup,
+   from the running VictoriaLogs via `/internal/partition/detach?name=YYYYMMDD` HTTP endpoint according to [these docs](https://docs.victoriametrics.com/victorialogs/#partitions-lifecycle).
 
-The `--delete` option is required in the command above, since it ensures that the destination folder contains the full copy of the backup and doesn't contain superfluous files.
+1. To copy the partition from backup with `rsync`:
 
-It is also possible to use **the disk snapshot** in order to perform a backup. This feature could be provided by your operating system,
-cloud provider, or third-party tools. Note that the snapshot must be **consistent** to ensure reliable backup.
+   ```sh
+   rsync -avh --progress --delete <username>@<host>:<path-to-backup>/YYYYMMDD <-storageDataPath>/partitions/
+   ```
+
+   The `--delete` option is required in the command above in order to ensure that the partition contains the full copy of the backup without superfluous files.
+
+1. To start VictoriaLogs instance or to attach the restored partition to the running VictoriaLogs instance via `/internal/partition/attach?name=YYYYMMDD` HTTP endpoint
+   according to [these docs](https://docs.victoriametrics.com/victorialogs/#partitions-lifecycle).
+
+It is also possible to use **the disk snapshot** feature provided by the operating system or cloud provider in order to perform a backup.
 
 ## Multitenancy
 
@@ -380,9 +394,9 @@ or similar authorization proxies. See [Security and Load balancing docs](https:/
 
 It is recommended protecting internal HTTP endpoints from unauthorized access:
 
-- [`/internal/force_flush`](#forced-flush) - via `-forceFlushAuthKey` [command-line flag](#list-of-command-line-flags).
-- [`/internal/force_merge`](#forced-merge) - via `-forceMergeAuthKey` [command-line flag](#list-of-command-line-flags).
-- [`/internal/partition/*`](#partitions-lifecycle) - via `-partitionManageAuthKey` [command-line flag](#list-of-command-line-flags).
+- [`/internal/force_flush`](https://docs.victoriametrics.com/victorialogs/#forced-flush) - via `-forceFlushAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).
+- [`/internal/force_merge`](https://docs.victoriametrics.com/victorialogs/#forced-merge) - via `-forceMergeAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).
+- [`/internal/partition/*`](https://docs.victoriametrics.com/victorialogs/#partitions-lifecycle) - via `-partitionManageAuthKey` [command-line flag](https://docs.victoriametrics.com/victorialogs/#list-of-command-line-flags).
 
 ### mTLS
 
@@ -413,7 +427,7 @@ The following command-line flags must be set in order to enable automatic issuin
 
 This functionality can be evaluated for free according to [these docs](https://docs.victoriametrics.com/victoriametrics/enterprise/).
 
-See also [security recommendations](#security).
+See also [security recommendations](https://docs.victoriametrics.com/victorialogs/#security).
 
 ## Benchmarks
 
@@ -479,6 +493,8 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -defaultMsgValue string
         Default value for _msg field if the ingested log entry doesn't contain it; see https://docs.victoriametrics.com/victorialogs/keyconcepts/#message-field (default "missing _msg field; see https://docs.victoriametrics.com/victorialogs/keyconcepts/#message-field")
+  -defaultParallelReaders int
+        Default number of parallel data readers to use for executing every query; higher number of readers may help increasing query performance on high-latency storage such as NFS or S3 at the cost of higher RAM usage; see https://docs.victoriametrics.com/victorialogs/logsql/#parallel_readers-query-option (default 32)
   -elasticsearch.version string
         Elasticsearch version to report to client (default "8.9.0")
   -enableTCP6
@@ -493,13 +509,16 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Whether to disable fadvise() syscall when reading large data files. The fadvise() syscall prevents from eviction of recently accessed data from OS page cache during background merges and backups. In some rare cases it is better to disable the syscall if it uses too much CPU
   -flagsAuthKey value
         Auth key for /flags endpoint. It must be passed via authKey query arg. It overrides -httpAuth.*
-        Flag value can be read from the given file when using -flagsAuthKey=file:///abs/path/to/file or -flagsAuthKey=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -flagsAuthKey=http://host/path or -flagsAuthKey=https://host/path
+        Flag value can be read from the given file when using -flagsAuthKey=file:///abs/path/to/file or -flagsAuthKey=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -flagsAuthKey=http://host/path or -flagsAuthKey=https://host/path
   -forceFlushAuthKey value
         authKey, which must be passed in query string to /internal/force_flush . It overrides -httpAuth.* . See https://docs.victoriametrics.com/victorialogs/#forced-flush
-        Flag value can be read from the given file when using -forceFlushAuthKey=file:///abs/path/to/file or -forceFlushAuthKey=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -forceFlushAuthKey=http://host/path or -forceFlushAuthKey=https://host/path
+        Flag value can be read from the given file when using -forceFlushAuthKey=file:///abs/path/to/file or -forceFlushAuthKey=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -forceFlushAuthKey=http://host/path or -forceFlushAuthKey=https://host/path
   -forceMergeAuthKey value
         authKey, which must be passed in query string to /internal/force_merge . It overrides -httpAuth.* . See https://docs.victoriametrics.com/victorialogs/#forced-merge
-        Flag value can be read from the given file when using -forceMergeAuthKey=file:///abs/path/to/file or -forceMergeAuthKey=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -forceMergeAuthKey=http://host/path or -forceMergeAuthKey=https://host/path
+        Flag value can be read from the given file when using -forceMergeAuthKey=file:///abs/path/to/file or -forceMergeAuthKey=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -forceMergeAuthKey=http://host/path or -forceMergeAuthKey=https://host/path
   -fs.disableMmap
         Whether to use pread() instead of mmap() for reading data files. By default, mmap() is used for 64-bit arches and pread() is used for 32-bit arches, since they cannot read data files bigger than 2^32 bytes in memory. mmap() is usually faster for reading small data chunks than pread()
   -futureRetention value
@@ -529,7 +548,8 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Optional delay before http server shutdown. During this delay, the server returns non-OK responses from /health page, so load balancers can route new requests to other servers
   -httpAuth.password value
         Password for HTTP server's Basic Auth. The authentication is disabled if -httpAuth.username is empty
-        Flag value can be read from the given file when using -httpAuth.password=file:///abs/path/to/file or -httpAuth.password=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -httpAuth.password=http://host/path or -httpAuth.password=https://host/path
+        Flag value can be read from the given file when using -httpAuth.password=file:///abs/path/to/file or -httpAuth.password=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -httpAuth.password=http://host/path or -httpAuth.password=https://host/path
   -httpAuth.username string
         Username for HTTP server's Basic Auth. The authentication is disabled if empty. See also -httpAuth.password
   -httpListenAddr array
@@ -568,6 +588,8 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Supports the following optional suffixes for size values: KB, MB, GB, TB, KiB, MiB, GiB, TiB (default 67108864)
   -internalselect.disable
         Whether to disable /internal/select/* HTTP endpoints
+  -internalselect.maxConcurrentRequests int
+        The limit on the number of concurrent requests to /internal/select/* endpoints; other requests are put into the wait queue; see https://docs.victoriametrics.com/victorialogs/cluster/ (default 100)
   -journald.ignoreFields array
         Comma-separated list of fields to ignore for logs ingested over journald protocol. See https://docs.victoriametrics.com/victorialogs/data-ingestion/journald/#dropping-fields
         Supports an array of values separated by comma or specified via multiple flags.
@@ -628,7 +650,8 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Whether to expose TYPE and HELP metadata at the /metrics page, which is exposed at -httpListenAddr . The metadata may be needed when the /metrics page is consumed by systems, which require this information. For example, Managed Prometheus in Google Cloud - https://cloud.google.com/stackdriver/docs/managed-prometheus/troubleshooting#missing-metric-type
   -metricsAuthKey value
         Auth key for /metrics endpoint. It must be passed via authKey query arg. It overrides -httpAuth.*
-        Flag value can be read from the given file when using -metricsAuthKey=file:///abs/path/to/file or -metricsAuthKey=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -metricsAuthKey=http://host/path or -metricsAuthKey=https://host/path
+        Flag value can be read from the given file when using -metricsAuthKey=file:///abs/path/to/file or -metricsAuthKey=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -metricsAuthKey=http://host/path or -metricsAuthKey=https://host/path
   -mtls array
         Whether to require valid client certificate for https requests to the corresponding -httpListenAddr . This flag works only if -tls flag is set. See also -mtlsCAFile . This flag is available only in Enterprise binaries. See https://docs.victoriametrics.com/victoriametrics/enterprise/
         Supports array of values separated by comma or specified via multiple flags.
@@ -642,10 +665,12 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Supports the following optional suffixes for size values: KB, MB, GB, TB, KiB, MiB, GiB, TiB (default 67108864)
   -partitionManageAuthKey value
         authKey, which must be passed in query string to /internal/partition/* . It overrides -httpAuth.* . See https://docs.victoriametrics.com/victorialogs/#partitions-lifecycle
-        Flag value can be read from the given file when using -partitionManageAuthKey=file:///abs/path/to/file or -partitionManageAuthKey=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -partitionManageAuthKey=http://host/path or -partitionManageAuthKey=https://host/path
+        Flag value can be read from the given file when using -partitionManageAuthKey=file:///abs/path/to/file or -partitionManageAuthKey=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -partitionManageAuthKey=http://host/path or -partitionManageAuthKey=https://host/path
   -pprofAuthKey value
         Auth key for /debug/pprof/* endpoints. It must be passed via authKey query arg. It overrides -httpAuth.*
-        Flag value can be read from the given file when using -pprofAuthKey=file:///abs/path/to/file or -pprofAuthKey=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -pprofAuthKey=http://host/path or -pprofAuthKey=https://host/path
+        Flag value can be read from the given file when using -pprofAuthKey=file:///abs/path/to/file or -pprofAuthKey=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -pprofAuthKey=http://host/path or -pprofAuthKey=https://host/path
   -pushmetrics.disableCompression
         Whether to disable request body compression when pushing metrics to every -pushmetrics.url
   -pushmetrics.extraLabel array
@@ -670,10 +695,14 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
   -retentionPeriod value
         Log entries with timestamps older than now-retentionPeriod are automatically deleted; log entries with timestamps outside the retention are also rejected during data ingestion; the minimum supported retention is 1d (one day); see https://docs.victoriametrics.com/victorialogs/#retention ; see also -retention.maxDiskSpaceUsageBytes and -retention.maxDiskUsagePercent
         The following optional suffixes are supported: s (second), h (hour), d (day), w (week), y (year). If suffix isn't set, then the duration is counted in months (default 7d)
+  -search.allowPartialResponse
+        Whether to allow returning partial responses when some of vlstorage nodes from the -storageNode list are unavaialbe for querying. This flag works only for cluster setup of VictoriaLogs. See https://docs.victoriametrics.com/victorialogs/querying/#partial-responses
   -search.maxConcurrentRequests int
         The maximum number of concurrent search requests. It shouldn't be high, since a single request can saturate all the CPU cores, while many concurrently executed requests may require high amounts of memory. See also -search.maxQueueDuration (default 16)
   -search.maxQueryDuration duration
         The maximum duration for query execution. It can be overridden to a smaller value on a per-query basis via 'timeout' query arg (default 30s)
+  -search.maxQueryTimeRange duration
+        The maximum time range, which can be set in the query sent to querying APIs. Queries with bigger time ranges are rejected. See https://docs.victoriametrics.com/victorialogs/querying/#resource-usage-limits
   -search.maxQueueDuration duration
         The maximum time the search request waits for execution when -search.maxConcurrentRequests limit is reached; see also -search.maxQueryDuration (default 10s)
   -select.disable
@@ -733,12 +762,20 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Optional basic auth username to use for the corresponding -storageNode
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -storageNode.usernameFile array
+        Optional path to basic auth username to use for the corresponding -storageNode. The file is re-read every second
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.compressMethod.tcp array
         Compression method for syslog messages received at the corresponding -syslog.listenAddr.tcp. Supported values: none, gzip, deflate. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#compression
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.compressMethod.udp array
         Compression method for syslog messages received at the corresponding -syslog.listenAddr.udp. Supported values: none, gzip, deflate. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#compression
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.compressMethod.unix array
+        Compression method for syslog messages received at the corresponding -syslog.listenAddr.unix. Supported values: none, gzip, deflate. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#compression
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.decolorizeFields.tcp array
@@ -749,12 +786,20 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Fields to remove ANSI color codes across logs ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#decolorizing-fields
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.decolorizeFields.unix array
+        Fields to remove ANSI color codes across logs ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#decolorizing-fields
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.extraFields.tcp array
         Fields to add to logs ingested via the corresponding -syslog.listenAddr.tcp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#adding-extra-fields
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.extraFields.udp array
         Fields to add to logs ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#adding-extra-fields
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.extraFields.unix array
+        Fields to add to logs ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#adding-extra-fields
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.ignoreFields.tcp array
@@ -765,12 +810,20 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Fields to ignore at logs ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#dropping-fields
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.ignoreFields.unix array
+        Fields to ignore at logs ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#dropping-fields
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.listenAddr.tcp array
         Comma-separated list of TCP addresses to listen to for Syslog messages. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.listenAddr.udp array
-        Comma-separated list of UDP address to listen to for Syslog messages. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/
+        Comma-separated list of UDP addresses to listen to for Syslog messages. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.listenAddr.unix array
+        Comma-separated list of Unix socket filepaths to listen to for Syslog messages. Filepaths may be prepended with 'unixgram:'  for listening for SOCK_DGRAM sockets. By default SOCK_STREAM sockets are used. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.mtls array
@@ -789,12 +842,20 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Fields to use as log stream labels for logs ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#stream-fields
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.streamFields.unix array
+        Fields to use as log stream labels for logs ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#stream-fields
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.tenantID.tcp array
         TenantID for logs ingested via the corresponding -syslog.listenAddr.tcp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#multitenancy
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.tenantID.udp array
         TenantID for logs ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#multitenancy
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.tenantID.unix array
+        TenantID for logs ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#multitenancy
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.timezone string
@@ -825,12 +886,20 @@ Pass `-help` to VictoriaLogs in order to see the list of supported command-line 
         Whether to use local timestamp instead of the original timestamp for the ingested syslog messages at the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#log-timestamps
         Supports array of values separated by comma or specified via multiple flags.
         Empty values are set to false.
+  -syslog.useLocalTimestamp.unix array
+        Whether to use local timestamp instead of the original timestamp for the ingested syslog messages at the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#log-timestamps
+        Supports array of values separated by comma or specified via multiple flags.
+        Empty values are set to false.
   -syslog.useRemoteIP.tcp array
         Whether to add remote ip address as 'remote_ip' log field for syslog messages ingested via the corresponding -syslog.listenAddr.tcp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#capturing-remote-ip-address
         Supports array of values separated by comma or specified via multiple flags.
         Empty values are set to false.
   -syslog.useRemoteIP.udp array
         Whether to add remote ip address as 'remote_ip' log field for syslog messages ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#capturing-remote-ip-address
+        Supports array of values separated by comma or specified via multiple flags.
+        Empty values are set to false.
+  -syslog.useRemoteIP.unix array
+        Whether to add remote ip address as 'remote_ip' log field for syslog messages ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#capturing-remote-ip-address
         Supports array of values separated by comma or specified via multiple flags.
         Empty values are set to false.
   -tls array
