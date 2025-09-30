@@ -1,10 +1,11 @@
 ---
-weight: 3
+title: vlagent
+weight: 4
 menu:
   docs:
-    parent: victorialogs
-    weight: 3
-title: vlagent
+    weight: 4
+    parent: "victorialogs"
+    identifier: vlagent
 tags:
   - logs
 aliases:
@@ -19,7 +20,7 @@ aliases:
 
 - `vlagent` can accept logs from popular log collectors in the same way as VictoriaLogs does. See [these docs](https://docs.victoriametrics.com/victorialogs/data-ingestion/).
   It accepts logs over HTTP-based protocols at the TCP port `9429` by default. The port can be changed via `-httpListenAddr` command-line flag.
-- `vlagent` can replicate collected logs among multiple VictoriaLogs instances - see [these docs](#replication-and-high-availability).
+- `vlagent` can replicate collected logs among multiple VictoriaLogs instances - see [these docs](https://docs.victoriametrics.com/victorialogs/vlagent/#replication-and-high-availability).
 - `vlagent` works smoothly in environments with unstable connections to VictoriaLogs instances. If the remote storage is unavailable, the collected logs
   are buffered at the directory specified via `-remoteWrite.tmpDataPath` command-line flag. The buffered logs are sent to remote storage as soon as the connection
   to the remote storage is repaired. The maximum disk usage for the buffer can be limited with `-remoteWrite.maxDiskUsagePerURL` command-line flag.
@@ -31,7 +32,7 @@ Please download and unpack `vlutils` archive from [releases page](https://github
 and [Quay](https://quay.io/repository/victoriametrics/vlagent?tab=tags)), then pass the following command-line flags to the `vlagent-prod` binary:
 
 - `-remoteWrite.url` - the VictoriaLogs endpoint for sending the accepted logs to. It must end with `/internal/insert`.
-  The `-remoteWrite.url` may refer to [DNS SRV](https://en.wikipedia.org/wiki/SRV_record) address. See [these docs](#srv-urls) for details.
+  The `-remoteWrite.url` may refer to [DNS SRV](https://en.wikipedia.org/wiki/SRV_record) address. See [these docs](https://docs.victoriametrics.com/victorialogs/vlagent/#srv-urls) for details.
 
 Example command, which starts `vlagent` for accepting logs over HTTP-based [supported protocols](https://docs.victoriametrics.com/victorialogs/data-ingestion/)
 at the port `9429` and sends the collected logs to VictoriaLogs instance at `victoria-logs-host:9428`:
@@ -40,7 +41,7 @@ at the port `9429` and sends the collected logs to VictoriaLogs instance at `vic
 /path/to/vlagent-prod -remoteWrite.url=http://victoria-logs-host:9428/internal/insert
 ```
 
-Pass `-help` to `vlagent` in order to see [the full list of supported command-line flags with their descriptions](#advanced-usage).
+Pass `-help` to `vlagent` in order to see [the full list of supported command-line flags with their descriptions](https://docs.victoriametrics.com/victorialogs/vlagent/#advanced-usage).
 
 ### Replication and high availability
 
@@ -73,9 +74,9 @@ If you have suggestions for improvements or have found a bug - please open an is
 
 ## Troubleshooting
 
-- It is recommended [setting up the official Grafana dashboard](#monitoring) in order to monitor the state of `vlagent`.
+- It is recommended [setting up the official Grafana dashboard](https://docs.victoriametrics.com/victorialogs/vlagent/#monitoring) in order to monitor the state of `vlagent`.
 
-- It is recommended increasing `-remoteWrite.queues` if `vlagent_remotewrite_pending_data_bytes` [metric](#monitoring)
+- It is recommended increasing `-remoteWrite.queues` if `vlagent_remotewrite_pending_data_bytes` [metric](https://docs.victoriametrics.com/victorialogs/vlagent/#monitoring)
   grows constantly. This can improve data ingestion performance to the configured remote storage systems at the cost of higher memory usage.
 
 - If you see gaps in the data pushed by `vlagent` to remote storage when `-remoteWrite.maxDiskUsagePerURL` is set,
@@ -83,7 +84,7 @@ If you have suggestions for improvements or have found a bug - please open an is
   Therefore, it starts dropping the buffered data if the on-disk buffer size exceeds `-remoteWrite.maxDiskUsagePerURL`.
 
 - `vlagent` drops data blocks if remote storage replies with `400 Bad Request` and `404 Not Found` HTTP responses.
-  The number of dropped blocks can be monitored via `vlagent_remotewrite_packets_dropped_total` metric exported at [/metrics page](#monitoring).
+  The number of dropped blocks can be monitored via `vlagent_remotewrite_packets_dropped_total` metric exported at [/metrics page](https://docs.victoriametrics.com/victorialogs/vlagent/#monitoring).
 
 - `vlagent` buffers the collected logs at the `-remoteWrite.tmpDataPath` directory until they are sent to the `-remoteWrite.url`.
   The directory can grow large when the remote storage is unavailable for extended periods of time and if the maximum directory size isn't limited
@@ -155,7 +156,8 @@ See the docs at https://docs.victoriametrics.com/victorialogs/vlagent/ .
         Whether to disable fadvise() syscall when reading large data files. The fadvise() syscall prevents from eviction of recently accessed data from OS page cache during background merges and backups. In some rare cases it is better to disable the syscall if it uses too much CPU
   -flagsAuthKey value
         Auth key for /flags endpoint. It must be passed via authKey query arg. It overrides -httpAuth.*
-        Flag value can be read from the given file when using -flagsAuthKey=file:///abs/path/to/file or -flagsAuthKey=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -flagsAuthKey=http://host/path or -flagsAuthKey=https://host/path
+        Flag value can be read from the given file when using -flagsAuthKey=file:///abs/path/to/file or -flagsAuthKey=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -flagsAuthKey=http://host/path or -flagsAuthKey=https://host/path
   -fs.disableMmap
         Whether to use pread() instead of mmap() for reading data files. By default, mmap() is used for 64-bit arches and pread() is used for 32-bit arches, since they cannot read data files bigger than 2^32 bytes in memory. mmap() is usually faster for reading small data chunks than pread()
   -http.connTimeout duration
@@ -182,7 +184,8 @@ See the docs at https://docs.victoriametrics.com/victorialogs/vlagent/ .
         Optional delay before http server shutdown. During this delay, the server returns non-OK responses from /health page, so load balancers can route new requests to other servers
   -httpAuth.password value
         Password for HTTP server's Basic Auth. The authentication is disabled if -httpAuth.username is empty
-        Flag value can be read from the given file when using -httpAuth.password=file:///abs/path/to/file or -httpAuth.password=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -httpAuth.password=http://host/path or -httpAuth.password=https://host/path
+        Flag value can be read from the given file when using -httpAuth.password=file:///abs/path/to/file or -httpAuth.password=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -httpAuth.password=http://host/path or -httpAuth.password=https://host/path
   -httpAuth.username string
         Username for HTTP server's Basic Auth. The authentication is disabled if empty. See also -httpAuth.password
   -httpListenAddr array
@@ -269,7 +272,8 @@ See the docs at https://docs.victoriametrics.com/victorialogs/vlagent/ .
         Whether to expose TYPE and HELP metadata at the /metrics page, which is exposed at -httpListenAddr . The metadata may be needed when the /metrics page is consumed by systems, which require this information. For example, Managed Prometheus in Google Cloud - https://cloud.google.com/stackdriver/docs/managed-prometheus/troubleshooting#missing-metric-type
   -metricsAuthKey value
         Auth key for /metrics endpoint. It must be passed via authKey query arg. It overrides -httpAuth.*
-        Flag value can be read from the given file when using -metricsAuthKey=file:///abs/path/to/file or -metricsAuthKey=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -metricsAuthKey=http://host/path or -metricsAuthKey=https://host/path
+        Flag value can be read from the given file when using -metricsAuthKey=file:///abs/path/to/file or -metricsAuthKey=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -metricsAuthKey=http://host/path or -metricsAuthKey=https://host/path
   -mtls array
         Whether to require valid client certificate for https requests to the corresponding -httpListenAddr . This flag works only if -tls flag is set. See also -mtlsCAFile . This flag is available only in Enterprise binaries. See https://docs.victoriametrics.com/victoriametrics/enterprise/
         Supports array of values separated by comma or specified via multiple flags.
@@ -283,7 +287,8 @@ See the docs at https://docs.victoriametrics.com/victorialogs/vlagent/ .
         Supports the following optional suffixes for size values: KB, MB, GB, TB, KiB, MiB, GiB, TiB (default 67108864)
   -pprofAuthKey value
         Auth key for /debug/pprof/* endpoints. It must be passed via authKey query arg. It overrides -httpAuth.*
-        Flag value can be read from the given file when using -pprofAuthKey=file:///abs/path/to/file or -pprofAuthKey=file://./relative/path/to/file . Flag value can be read from the given http/https url when using -pprofAuthKey=http://host/path or -pprofAuthKey=https://host/path
+        Flag value can be read from the given file when using -pprofAuthKey=file:///abs/path/to/file or -pprofAuthKey=file://./relative/path/to/file.
+        Flag value can be read from the given http/https url when using -pprofAuthKey=http://host/path or -pprofAuthKey=https://host/path
   -pushmetrics.disableCompression
         Whether to disable request body compression when pushing metrics to every -pushmetrics.url
   -pushmetrics.extraLabel array
@@ -420,12 +425,20 @@ See the docs at https://docs.victoriametrics.com/victorialogs/vlagent/ .
         Compression method for syslog messages received at the corresponding -syslog.listenAddr.udp. Supported values: none, gzip, deflate. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#compression
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.compressMethod.unix array
+        Compression method for syslog messages received at the corresponding -syslog.listenAddr.unix. Supported values: none, gzip, deflate. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#compression
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.decolorizeFields.tcp array
         Fields to remove ANSI color codes across logs ingested via the corresponding -syslog.listenAddr.tcp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#decolorizing-fields
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.decolorizeFields.udp array
         Fields to remove ANSI color codes across logs ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#decolorizing-fields
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.decolorizeFields.unix array
+        Fields to remove ANSI color codes across logs ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#decolorizing-fields
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.extraFields.tcp array
@@ -436,6 +449,10 @@ See the docs at https://docs.victoriametrics.com/victorialogs/vlagent/ .
         Fields to add to logs ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#adding-extra-fields
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.extraFields.unix array
+        Fields to add to logs ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#adding-extra-fields
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.ignoreFields.tcp array
         Fields to ignore at logs ingested via the corresponding -syslog.listenAddr.tcp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#dropping-fields
         Supports an array of values separated by comma or specified via multiple flags.
@@ -444,12 +461,20 @@ See the docs at https://docs.victoriametrics.com/victorialogs/vlagent/ .
         Fields to ignore at logs ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#dropping-fields
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.ignoreFields.unix array
+        Fields to ignore at logs ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#dropping-fields
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.listenAddr.tcp array
         Comma-separated list of TCP addresses to listen to for Syslog messages. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.listenAddr.udp array
-        Comma-separated list of UDP address to listen to for Syslog messages. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/
+        Comma-separated list of UDP addresses to listen to for Syslog messages. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.listenAddr.unix array
+        Comma-separated list of Unix socket filepaths to listen to for Syslog messages. Filepaths may be prepended with 'unixgram:'  for listening for SOCK_DGRAM sockets. By default SOCK_STREAM sockets are used. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.mtls array
@@ -468,12 +493,20 @@ See the docs at https://docs.victoriametrics.com/victorialogs/vlagent/ .
         Fields to use as log stream labels for logs ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#stream-fields
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.streamFields.unix array
+        Fields to use as log stream labels for logs ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#stream-fields
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.tenantID.tcp array
         TenantID for logs ingested via the corresponding -syslog.listenAddr.tcp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#multitenancy
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.tenantID.udp array
         TenantID for logs ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#multitenancy
+        Supports an array of values separated by comma or specified via multiple flags.
+        Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.tenantID.unix array
+        TenantID for logs ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#multitenancy
         Supports an array of values separated by comma or specified via multiple flags.
         Value can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.timezone string
@@ -504,12 +537,20 @@ See the docs at https://docs.victoriametrics.com/victorialogs/vlagent/ .
         Whether to use local timestamp instead of the original timestamp for the ingested syslog messages at the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#log-timestamps
         Supports array of values separated by comma or specified via multiple flags.
         Empty values are set to false.
+  -syslog.useLocalTimestamp.unix array
+        Whether to use local timestamp instead of the original timestamp for the ingested syslog messages at the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#log-timestamps
+        Supports array of values separated by comma or specified via multiple flags.
+        Empty values are set to false.
   -syslog.useRemoteIP.tcp array
         Whether to add remote ip address as 'remote_ip' log field for syslog messages ingested via the corresponding -syslog.listenAddr.tcp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#capturing-remote-ip-address
         Supports array of values separated by comma or specified via multiple flags.
         Empty values are set to false.
   -syslog.useRemoteIP.udp array
         Whether to add remote ip address as 'remote_ip' log field for syslog messages ingested via the corresponding -syslog.listenAddr.udp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#capturing-remote-ip-address
+        Supports array of values separated by comma or specified via multiple flags.
+        Empty values are set to false.
+  -syslog.useRemoteIP.unix array
+        Whether to add remote ip address as 'remote_ip' log field for syslog messages ingested via the corresponding -syslog.listenAddr.unix. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#capturing-remote-ip-address
         Supports array of values separated by comma or specified via multiple flags.
         Empty values are set to false.
   -tls array
