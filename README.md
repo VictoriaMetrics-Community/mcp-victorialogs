@@ -81,7 +81,7 @@ docker run -d --name mcp-victorialogs \
   -e MCP_LISTEN_ADDR=:8081 \
   -e MCP_SERVER_MODE=http \
   -e VL_INSTANCE_ENTRYPOINT=https://play-vmlogs.victoriametrics.com \
-  -p 8081:8081
+  -p 8081:8081 \
   ghcr.io/victoriametrics-community/mcp-victorialogs
 ```
 
