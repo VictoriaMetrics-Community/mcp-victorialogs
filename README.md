@@ -78,15 +78,17 @@ This is the easiest way to get started without needing to install Go or build fr
 
 ```bash
 docker run -d --name mcp-victorialogs \
-  -e MCP_SERVER_MODE=sse \
+  -e MCP_LISTEN_ADDR=:8081 \
+  -e MCP_SERVER_MODE=http \
   -e VL_INSTANCE_ENTRYPOINT=https://play-vmlogs.victoriametrics.com \
+  -p 8081:8081
   ghcr.io/victoriametrics-community/mcp-victorialogs
 ```
 
 You should replace environment variables with your own parameters.
 
-Note that the `MCP_SERVER_MODE=sse` flag is used to enable Server-Sent Events mode, which used by MCP clients to connect.
-Alternatively, you can use `MCP_SERVER_MODE=http` to enable Streamable HTTP mode. More details about server modes can be found in the [Configuration](#configuration) section.
+Note that the `MCP_SERVER_MODE=http` flag is used to enable Streamable HTTP mode. 
+More details about server modes can be found in the [Configuration](#configuration) section.
 
 See available docker images in [github registry](https://github.com/orgs/VictoriaMetrics-Community/packages/container/package/mcp-victorialogs).
 
