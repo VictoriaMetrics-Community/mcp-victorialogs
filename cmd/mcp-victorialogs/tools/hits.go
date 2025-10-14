@@ -25,7 +25,7 @@ var (
 			mcp.Title("Tenant name (Account ID and Project ID)"),
 			mcp.Description("Name of the tenant for which the data will be displayed (format AccountID:ProjectID)"),
 			mcp.DefaultString("0:0"),
-			mcp.Pattern(`^([0-9]+)\:[0-9]+$`),
+			mcp.Pattern(`^([0-9]+)(:[0-9]+)$`),
 		),
 		mcp.WithString("query",
 			mcp.Required(),
