@@ -39,6 +39,8 @@ There is a publicly available instance of the VictoriaMetrics MCP Server that yo
 https://play-vmlogs-mcp.victoriametrics.com/mcp
 ```
 
+**Attention!** This URL is not supposed to be opened in a browser, it is intended to be used in MCP clients.
+
 It's available in [Streamable HTTP Mode](#modes) mode and configured to work with [Public VictoriaLogs Playground](https://play-vmlogs.victoriametrics.com).
 
 Here is example of configuration for [Claude Desktop](https://claude.ai/download):
