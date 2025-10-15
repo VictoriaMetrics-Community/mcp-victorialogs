@@ -48,6 +48,10 @@ var (
 			mcp.Title("Field name"),
 			mcp.Description("Field name of for getting field values."),
 		),
+		mcp.WithNumber("limit",
+			mcp.Title("Limit of values"),
+			mcp.Description("The maximum number of returned values."),
+		),
 	)
 )
 
@@ -72,6 +76,11 @@ func toolFieldValuesHandler(ctx context.Context, cfg *config.Config, tcr mcp.Cal
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	limit, err := GetToolReqParam[float64](tcr, "limit", false)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	req, err := CreateSelectRequest(ctx, cfg, tcr, "field_values")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create request: %v", err)), nil
@@ -83,6 +92,9 @@ func toolFieldValuesHandler(ctx context.Context, cfg *config.Config, tcr mcp.Cal
 	q.Add("field", field)
 	if end != "" {
 		q.Add("end", end)
+	}
+	if limit > 0 {
+		q.Add("limit", fmt.Sprintf("%.f", limit))
 	}
 	req.URL.RawQuery = q.Encode()
 
