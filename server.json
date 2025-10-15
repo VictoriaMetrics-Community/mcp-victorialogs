@@ -11,8 +11,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "registryBaseUrl": "https://ghcr.io",
-      "identifier": "victoriametrics-community/mcp-victorialogs",
+      "identifier": "https://ghcr.io/victoriametrics-community/mcp-victorialogs",
       "version": "v${VERSION}",
       "transport": {
         "type": "stdio"
@@ -21,13 +20,6 @@
         {
           "name": "VL_INSTANCE_ENTRYPOINT",
           "description": "URL to VictoriaMetrics instance (it should be root URL of vmlingle or vlselect), for example http://localhost:9428 or https://play-vmlogs.victoriametrics.com",
-          "isRequired": true,
-          "format": "string",
-          "isSecret": false
-        },
-        {
-          "name": "VL_INSTANCE_TYPE",
-          "description": "Type of VictoriaMetrics instance (single / cluster)",
           "isRequired": true,
           "format": "string",
           "isSecret": false
