@@ -6,7 +6,7 @@ require (
 	github.com/VictoriaMetrics/metrics v1.40.2
 	github.com/blevesearch/bleve/v2 v2.5.3
 	github.com/mark3labs/mcp-go v0.41.1
-	github.com/tmc/langchaingo v0.1.13
+	github.com/tmc/langchaingo v0.1.14
 )
 
 require (
@@ -54,7 +54,7 @@ require (
 	gitlab.com/golang-commonmark/puny v0.0.0-20191124015043-9f83538fa04f // indirect
 	go.etcd.io/bbolt v1.4.3 // indirect
 	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
