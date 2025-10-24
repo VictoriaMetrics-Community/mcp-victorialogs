@@ -355,7 +355,7 @@ You should replace run command in configuration examples above in the following 
 ```
 {
   "mcpServers": {
-    "victoriametrics": {
+    "victorialogs": {
       "command": "docker",
         "args": [
           "run",
