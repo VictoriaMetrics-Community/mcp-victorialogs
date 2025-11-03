@@ -1,11 +1,11 @@
 module github.com/VictoriaMetrics-Community/mcp-victorialogs
 
-go 1.25.1
+go 1.25.3
 
 require (
 	github.com/VictoriaMetrics/metrics v1.40.2
 	github.com/blevesearch/bleve/v2 v2.5.4
-	github.com/mark3labs/mcp-go v0.42.0
+	github.com/mark3labs/mcp-go v0.43.0
 	github.com/tmc/langchaingo v0.1.14
 )
 
