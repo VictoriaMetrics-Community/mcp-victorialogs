@@ -50,15 +50,15 @@ func InitConfig() (*Config, error) {
 		}
 	}
 
-	var heartbeatInterval time.Duration
+	heartbeatInterval := 30 * time.Second
 	heartbeatIntervalStr := os.Getenv("MCP_HEARTBEAT_INTERVAL")
 	if heartbeatIntervalStr != "" {
 		interval, err := time.ParseDuration(heartbeatIntervalStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse MCP_HEARTBEAT_INTERVAL: %w", err)
 		}
-		if interval <= 0 {
-			return nil, fmt.Errorf("MCP_HEARTBEAT_INTERVAL must be greater than 0")
+		if interval < 0 {
+			return nil, fmt.Errorf("MCP_HEARTBEAT_INTERVAL must be a non-negative")
 		}
 		heartbeatInterval = interval
 	}
@@ -132,9 +132,6 @@ func (c *Config) IsToolDisabled(toolName string) bool {
 }
 
 func (c *Config) HeartbeatInterval() time.Duration {
-	if c.heartbeatInterval <= 0 {
-		return 30 * time.Second // Default heartbeat interval
-	}
 	return c.heartbeatInterval
 }
 
