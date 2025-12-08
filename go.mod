@@ -5,7 +5,7 @@ go 1.25.3
 require (
 	github.com/VictoriaMetrics/metrics v1.40.2
 	github.com/blevesearch/bleve/v2 v2.5.5
-	github.com/mark3labs/mcp-go v0.43.1
+	github.com/mark3labs/mcp-go v0.43.2
 	github.com/tmc/langchaingo v0.1.14
 )
 

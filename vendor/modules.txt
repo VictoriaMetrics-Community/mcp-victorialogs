@@ -137,7 +137,7 @@ github.com/json-iterator/go
 ## explicit; go 1.20
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jwriter
-# github.com/mark3labs/mcp-go v0.43.1
+# github.com/mark3labs/mcp-go v0.43.2
 ## explicit; go 1.23.0
 github.com/mark3labs/mcp-go/mcp
 github.com/mark3labs/mcp-go/server
