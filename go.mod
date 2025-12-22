@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/VictoriaMetrics/metrics v1.40.2
-	github.com/blevesearch/bleve/v2 v2.5.6
+	github.com/blevesearch/bleve/v2 v2.5.7
 	github.com/mark3labs/mcp-go v0.43.2
 	github.com/tmc/langchaingo v0.1.14
 )
@@ -29,7 +29,7 @@ require (
 	github.com/blevesearch/zapx/v13 v13.4.2 // indirect
 	github.com/blevesearch/zapx/v14 v14.4.2 // indirect
 	github.com/blevesearch/zapx/v15 v15.4.2 // indirect
-	github.com/blevesearch/zapx/v16 v16.2.7 // indirect
+	github.com/blevesearch/zapx/v16 v16.2.8 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
