@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/config"
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/hooks"
+	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/logging"
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/prompts"
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/resources"
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/tools"
@@ -38,15 +40,31 @@ const (
 func main() {
 	c, err := config.InitConfig()
 	if err != nil {
-		fmt.Printf("Error initializing config: %v\n", err)
+		log.Fatalf("FATAL: Error initializing config: %v\n", err)
+		return
+	}
+
+	logger, err := logging.New(c)
+	if err != nil {
+		log.Fatalf("FATAL: Failed to initialize logger: %v\n", err)
 		return
 	}
 
 	if !c.IsStdio() {
-		log.Printf("Starting mcp-victorialogs version %s (date: %s)", version, date)
+		slog.Info("Starting mcp-victorialogs",
+			"version", version,
+			"date", date,
+			"mode", c.ServerMode(),
+			"addr", c.ListenAddr(),
+		)
 	}
 
 	ms := metrics.NewSet()
+	// Combine metrics and logging hooks
+	metricsHooks := hooks.New(ms)
+	loggingHooks := hooks.NewLoggerHooks()
+	combinedHooks := hooks.Merge(metricsHooks, loggingHooks)
+
 	s := server.NewMCPServer(
 		"VictoriaLogs",
 		fmt.Sprintf("v%s (date: %s)", version, date),
@@ -55,7 +73,7 @@ func main() {
 		server.WithToolCapabilities(true),
 		server.WithResourceCapabilities(true, true),
 		server.WithPromptCapabilities(true),
-		server.WithHooks(hooks.New(ms)),
+		server.WithHooks(combinedHooks),
 		server.WithInstructions(`
 You are Virtual Assistant, a tool for interacting with VictoriaLogs API and documentation in different tasks related to logs and observability.
 You use LogsQL language to query logs and get information from the logs stored in VictoriaLogs.
@@ -89,8 +107,9 @@ Try not to second guess information - if you don't know something or lack inform
 	prompts.RegisterPromptDocumentation(s, c)
 
 	if c.IsStdio() {
-		if err := server.ServeStdio(s); err != nil {
-			log.Fatalf("failed to start server in stdio mode on %s: %v", c.ListenAddr(), err)
+		if err := server.ServeStdio(s, server.WithErrorLogger(logger.Logger)); err != nil {
+			slog.Error("failed to start server in stdio mode", "addr", c.ListenAddr(), "error", err)
+			os.Exit(1)
 		}
 		return
 	}
@@ -123,14 +142,15 @@ Try not to second guess information - if you don't know something or lack inform
 
 	switch c.ServerMode() {
 	case "sse":
-		log.Printf("Starting server in SSE mode on %s", c.ListenAddr())
+		slog.Info("Starting server in SSE mode", "addr", c.ListenAddr())
 		srv := server.NewSSEServer(s)
 		mux.Handle(srv.CompleteSsePath(), srv.SSEHandler())
 		mux.Handle(srv.CompleteMessagePath(), srv.MessageHandler())
 	case "http":
-		log.Printf("Starting server in HTTP mode on %s", c.ListenAddr())
+		slog.Info("Starting server in HTTP mode", "addr", c.ListenAddr())
 		heartBeatOption := server.WithHeartbeatInterval(c.HeartbeatInterval())
-		srv := server.NewStreamableHTTPServer(s, heartBeatOption)
+		loggerOption := server.WithLogger(logger)
+		srv := server.NewStreamableHTTPServer(s, heartBeatOption, loggerOption)
 		mux.Handle("/mcp", srv)
 	default:
 		log.Fatalf("Unknown server mode: %s", c.ServerMode())
@@ -139,7 +159,7 @@ Try not to second guess information - if you don't know something or lack inform
 	ongoingCtx, stopOngoingGracefully := context.WithCancel(context.Background())
 	hs := &http.Server{
 		Addr:    c.ListenAddr(),
-		Handler: mux,
+		Handler: logger.Middleware(mux),
 		BaseContext: func(_ net.Listener) context.Context {
 			return ongoingCtx
 		},
@@ -147,13 +167,15 @@ Try not to second guess information - if you don't know something or lack inform
 
 	listener, err := net.Listen("tcp", c.ListenAddr())
 	if err != nil {
-		log.Fatalf("Failed to listen on %s: %v", c.ListenAddr(), err)
+		slog.Error("Failed to listen", "addr", c.ListenAddr(), "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Server is listening on %s", c.ListenAddr())
+	slog.Info("Server is listening", "addr", c.ListenAddr())
 
 	go func() {
 		if err := hs.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Failed to start server: %v", err)
+			slog.Error("Failed to start server", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -161,20 +183,20 @@ Try not to second guess information - if you don't know something or lack inform
 	<-rootCtx.Done()
 	stop()
 	isReady.Store(false)
-	log.Println("Received shutdown signal, shutting down.")
+	slog.Info("Received shutdown signal, shutting down.")
 
 	// Give time for readiness check to propagate
 	time.Sleep(_readinessDrainDelay)
-	log.Println("Readiness check propagated, now waiting for ongoing requests to finish.")
+	slog.Info("Readiness check propagated, now waiting for ongoing requests to finish.")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownPeriod)
 	defer cancel()
 	err = hs.Shutdown(shutdownCtx)
 	stopOngoingGracefully()
 	if err != nil {
-		log.Println("Failed to wait for ongoing requests to finish, waiting for forced cancellation.")
+		slog.Warn("Failed to wait for ongoing requests to finish, waiting for forced cancellation.")
 		time.Sleep(_shutdownHardPeriod)
 	}
 
-	log.Println("Server stopped.")
+	slog.Info("Server stopped.")
 }
