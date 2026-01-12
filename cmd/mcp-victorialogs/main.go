@@ -51,7 +51,7 @@ func main() {
 	}
 
 	if !c.IsStdio() {
-		slog.Info("Starting mcp-victoriametrics",
+		slog.Info("Starting mcp-victorialogs",
 			"version", version,
 			"date", date,
 			"mode", c.ServerMode(),
