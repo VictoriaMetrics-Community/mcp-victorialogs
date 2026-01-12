@@ -157,7 +157,9 @@ MCP Server for VictoriaLogs is configured via environment variables:
 | `MCP_SERVER_MODE`          | Server operation mode. See [Modes](#modes) for details. | No       | `stdio`          | `stdio`, `sse`, `http` |
 | `MCP_LISTEN_ADDR`          | Address for SSE or HTTP server to listen on             | No       | `localhost:8081` | -                      |
 | `MCP_DISABLED_TOOLS`       | Comma-separated list of tools to disable                | No       | -                | -                      |
-| `MCP_HEARTBEAT_INTERVAL`   | Defines the heartbeat interval for the streamable-http protocol. <br /> It means the MCP server will send a heartbeat to the client through the GET connection, <br /> to keep the connection alive from being closed by the network infrastructure (e.g. gateways) | No | `30s`  | -   |
+| `MCP_HEARTBEAT_INTERVAL`   | Defines the heartbeat interval for the streamable-http protocol. <br /> It means the MCP server will send a heartbeat to the client through the GET connection, <br /> to keep the connection alive from being closed by the network infrastructure (e.g. gateways) | No       | `30s`            | -                      |
+| `MCP_LOG_FORMAT`           | Log output format                                                                                                                                                                                                                                                      | No       | `text`           | `text`, `json`         |
+| `MCP_LOG_LEVEL`            | Minimum log level                                                                                                                                                                                                                                                      | No       | `info`           | `debug`, `info`, `warn`, `error` |
 
 ### Modes
 
