@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
+	"strconv"
 
+	"github.com/VictoriaMetrics/VictoriaLogs/lib/logstorage"
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/VictoriaMetrics-Community/mcp-victorialogs/cmd/mcp-victorialogs/config"
@@ -35,6 +36,14 @@ func CreateSelectRequest(ctx context.Context, cfg *config.Config, tcr mcp.CallTo
 	// Add custom headers from configuration
 	for key, value := range cfg.CustomHeaders() {
 		req.Header.Set(key, value)
+	}
+
+	defaultTenantID := cfg.DefaultTenantID()
+	if accountID == "" {
+		accountID = strconv.FormatUint(uint64(defaultTenantID.AccountID), 10)
+	}
+	if projectID == "" {
+		projectID = strconv.FormatUint(uint64(defaultTenantID.ProjectID), 10)
 	}
 
 	req.Header.Set("AccountID", accountID)
@@ -113,24 +122,15 @@ func GetToolReqTenant(tcr mcp.CallToolRequest) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get tenant: %v", err)
 	}
-	tenantParts := strings.Split(tenant, ":")
-	if len(tenantParts) > 2 {
-		return "", "", fmt.Errorf("tenant must be in the format AccountID:ProjectID")
+	if tenant == "" {
+		return "", "", nil
 	}
-	accountID := "0"
-	projectID := "0"
-	if len(tenantParts) > 0 {
-		accountID = tenantParts[0]
-		if accountID == "" {
-			accountID = "0"
-		}
+	tenantID, err := logstorage.ParseTenantID(tenant)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to parse tenant %q: %v", tenant, err)
 	}
-	if len(tenantParts) > 1 {
-		projectID = tenantParts[1]
-		if projectID == "" {
-			projectID = "0"
-		}
-	}
+	accountID := strconv.FormatUint(uint64(tenantID.AccountID), 10)
+	projectID := strconv.FormatUint(uint64(tenantID.ProjectID), 10)
 	return accountID, projectID, nil
 }
 
