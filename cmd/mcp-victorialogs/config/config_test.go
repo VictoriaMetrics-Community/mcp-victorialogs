@@ -14,6 +14,7 @@ func TestInitConfig(t *testing.T) {
 	originalSSEAddr := os.Getenv("MCP_SSE_ADDR")
 	originalBearerToken := os.Getenv("VL_INSTANCE_BEARER_TOKEN")
 	originalHeartbeatInterval := os.Getenv("MCP_HEARTBEAT_INTERVAL")
+	originalDefaultTenantID := os.Getenv("VL_DEFAULT_TENANT_ID")
 
 	// Restore environment variables after test
 	defer func() {
@@ -22,6 +23,7 @@ func TestInitConfig(t *testing.T) {
 		os.Setenv("MCP_SSE_ADDR", originalSSEAddr)
 		os.Setenv("VL_INSTANCE_BEARER_TOKEN", originalBearerToken)
 		os.Setenv("MCP_HEARTBEAT_INTERVAL", originalHeartbeatInterval)
+		os.Setenv("VL_DEFAULT_TENANT_ID", originalDefaultTenantID)
 	}()
 
 	// Test case 1: Valid configuration
@@ -228,6 +230,87 @@ func TestInitConfig(t *testing.T) {
 		_, err := InitConfig()
 		if err == nil || err.Error() != "failed to parse MCP_HEARTBEAT_INTERVAL: time: missing unit in duration \"123\"" {
 			t.Errorf("Expected error 'failed to parse MCP_HEARTBEAT_INTERVAL: time: missing unit in duration \"123\"', got: %v", err)
+		}
+	})
+
+	// Test case 7: Default tenant ID - valid format
+	t.Run("Valid default tenant ID", func(t *testing.T) {
+		os.Setenv("VL_INSTANCE_ENTRYPOINT", "http://example.com")
+		os.Setenv("MCP_SERVER_MODE", "stdio")
+		os.Setenv("MCP_HEARTBEAT_INTERVAL", "")
+		os.Setenv("VL_DEFAULT_TENANT_ID", "123:456")
+
+		cfg, err := InitConfig()
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+
+		tenantID := cfg.DefaultTenantID()
+		if tenantID.AccountID != 123 {
+			t.Errorf("Expected AccountID 123, got: %d", tenantID.AccountID)
+		}
+		if tenantID.ProjectID != 456 {
+			t.Errorf("Expected ProjectID 456, got: %d", tenantID.ProjectID)
+		}
+	})
+
+	// Test case 8: Default tenant ID - account only
+	t.Run("Default tenant ID - account only", func(t *testing.T) {
+		os.Setenv("VL_INSTANCE_ENTRYPOINT", "http://example.com")
+		os.Setenv("VL_DEFAULT_TENANT_ID", "789")
+
+		cfg, err := InitConfig()
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+
+		tenantID := cfg.DefaultTenantID()
+		if tenantID.AccountID != 789 {
+			t.Errorf("Expected AccountID 789, got: %d", tenantID.AccountID)
+		}
+		if tenantID.ProjectID != 0 {
+			t.Errorf("Expected ProjectID 0, got: %d", tenantID.ProjectID)
+		}
+	})
+
+	// Test case 9: Default tenant ID - empty (should use 0:0)
+	t.Run("Default tenant ID - empty", func(t *testing.T) {
+		os.Setenv("VL_INSTANCE_ENTRYPOINT", "http://example.com")
+		os.Setenv("VL_DEFAULT_TENANT_ID", "")
+
+		cfg, err := InitConfig()
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+
+		tenantID := cfg.DefaultTenantID()
+		if tenantID.AccountID != 0 {
+			t.Errorf("Expected AccountID 0, got: %d", tenantID.AccountID)
+		}
+		if tenantID.ProjectID != 0 {
+			t.Errorf("Expected ProjectID 0, got: %d", tenantID.ProjectID)
+		}
+	})
+
+	// Test case 10: Default tenant ID - invalid format
+	t.Run("Default tenant ID - invalid format", func(t *testing.T) {
+		os.Setenv("VL_INSTANCE_ENTRYPOINT", "http://example.com")
+		os.Setenv("VL_DEFAULT_TENANT_ID", "invalid")
+
+		_, err := InitConfig()
+		if err == nil {
+			t.Fatal("Expected error for invalid tenant ID, got nil")
+		}
+	})
+
+	// Test case 11: Default tenant ID - too many colons
+	t.Run("Default tenant ID - too many colons", func(t *testing.T) {
+		os.Setenv("VL_INSTANCE_ENTRYPOINT", "http://example.com")
+		os.Setenv("VL_DEFAULT_TENANT_ID", "1:2:3")
+
+		_, err := InitConfig()
+		if err == nil {
+			t.Fatal("Expected error for invalid tenant ID format, got nil")
 		}
 	})
 }

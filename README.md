@@ -154,6 +154,7 @@ MCP Server for VictoriaLogs is configured via environment variables:
 | `VL_INSTANCE_ENTRYPOINT`   | URL to VictoriaLogs instance                            | Yes      | -                | -                      |
 | `VL_INSTANCE_BEARER_TOKEN` | Authentication token for VictoriaLogs API               | No       | -                | -                      |
 | `VL_INSTANCE_HEADERS`      | Custom HTTP headers to send with requests (comma-separated key=value pairs) | No       | -                | -                      |
+| `VL_DEFAULT_TENANT_ID`     | Default tenant ID used when tenant is not specified in requests (format: `AccountID:ProjectID` or `AccountID`) | No       | `0:0`            | -                      |
 | `MCP_SERVER_MODE`          | Server operation mode. See [Modes](#modes) for details. | No       | `stdio`          | `stdio`, `sse`, `http` |
 | `MCP_LISTEN_ADDR`          | Address for SSE or HTTP server to listen on             | No       | `localhost:8081` | -                      |
 | `MCP_DISABLED_TOOLS`       | Comma-separated list of tools to disable                | No       | -                | -                      |
