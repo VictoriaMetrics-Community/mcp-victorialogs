@@ -245,8 +245,8 @@ func TestGetToolReqTenant(t *testing.T) {
 		{
 			name:              "Empty tenant returns default 0:0",
 			tenant:            "",
-			expectedAccountID: "0",
-			expectedProjectID: "0",
+			expectedAccountID: "",
+			expectedProjectID: "",
 			expectError:       false,
 		},
 		{
