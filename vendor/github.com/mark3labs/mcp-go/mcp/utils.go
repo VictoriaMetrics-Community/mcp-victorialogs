@@ -100,6 +100,16 @@ func AsEmbeddedResource(content any) (*EmbeddedResource, bool) {
 	return asType[EmbeddedResource](content)
 }
 
+// AsToolUseContent attempts to cast the given interface to ToolUseContent
+func AsToolUseContent(content any) (*ToolUseContent, bool) {
+	return asType[ToolUseContent](content)
+}
+
+// AsToolResultContent attempts to cast the given interface to ToolResultContent
+func AsToolResultContent(content any) (*ToolResultContent, bool) {
+	return asType[ToolResultContent](content)
+}
+
 // AsTextResourceContents attempts to cast the given interface to TextResourceContents
 func AsTextResourceContents(content any) (*TextResourceContents, bool) {
 	return asType[TextResourceContents](content)
@@ -167,7 +177,7 @@ func NewProgressNotification(
 ) ProgressNotification {
 	notification := ProgressNotification{
 		Notification: Notification{
-			Method: "notifications/progress",
+			Method: string(MethodNotificationProgress),
 		},
 		Params: struct {
 			ProgressToken ProgressToken `json:"progressToken"`
@@ -197,7 +207,7 @@ func NewLoggingMessageNotification(
 ) LoggingMessageNotification {
 	return LoggingMessageNotification{
 		Notification: Notification{
-			Method: "notifications/message",
+			Method: string(MethodNotificationMessage),
 		},
 		Params: struct {
 			Level  LoggingLevel `json:"level"`
@@ -264,6 +274,26 @@ func NewEmbeddedResource(resource ResourceContents) EmbeddedResource {
 	return EmbeddedResource{
 		Type:     ContentTypeResource,
 		Resource: resource,
+	}
+}
+
+// NewToolUseContent creates a new ToolUseContent with the given id, tool name, and input arguments.
+func NewToolUseContent(id, name string, input any) ToolUseContent {
+	return ToolUseContent{
+		Type:  ContentTypeToolUse,
+		ID:    id,
+		Name:  name,
+		Input: input,
+	}
+}
+
+// NewToolResultContent creates a new ToolResultContent with the given tool use ID, content, and error flag.
+func NewToolResultContent(toolUseID string, content []Content, isError bool) ToolResultContent {
+	return ToolResultContent{
+		Type:      ContentTypeToolResult,
+		ToolUseID: toolUseID,
+		Content:   content,
+		IsError:   isError,
 	}
 }
 
@@ -636,6 +666,12 @@ func ParseContent(contentMap map[string]any) (Content, error) {
 			return nil, fmt.Errorf("resource_link uri or name is missing")
 		}
 		c := NewResourceLink(uri, name, description, mimeType)
+		c.Title = ExtractString(contentMap, "title")
+		if value, ok := contentMap["size"]; ok && value != nil {
+			if size, err := cast.ToInt64E(value); err == nil && size >= 0 {
+				c.Size = &size
+			}
+		}
 		c.Annotations = annotations
 		return c, nil
 
@@ -651,6 +687,46 @@ func ParseContent(contentMap map[string]any) (Content, error) {
 		}
 
 		c := NewEmbeddedResource(resourceContents)
+		c.Annotations = annotations
+		c.Meta = meta
+		return c, nil
+
+	case ContentTypeToolUse:
+		id := ExtractString(contentMap, "id")
+		if id == "" {
+			return nil, fmt.Errorf("tool_use id is missing")
+		}
+		name := ExtractString(contentMap, "name")
+		if name == "" {
+			return nil, fmt.Errorf("tool_use name is missing")
+		}
+		input := contentMap["input"]
+		c := NewToolUseContent(id, name, input)
+		c.Annotations = annotations
+		c.Meta = meta
+		return c, nil
+
+	case ContentTypeToolResult:
+		toolUseID := ExtractString(contentMap, "toolUseId")
+		if toolUseID == "" {
+			return nil, fmt.Errorf("tool_result toolUseId is missing")
+		}
+		isError, _ := contentMap["isError"].(bool)
+		var contentItems []Content
+		if rawContent, ok := contentMap["content"].([]any); ok {
+			for i, item := range rawContent {
+				itemMap, ok := item.(map[string]any)
+				if !ok {
+					return nil, fmt.Errorf("tool_result content[%d]: expected object, got %T", i, item)
+				}
+				parsed, err := ParseContent(itemMap)
+				if err != nil {
+					return nil, fmt.Errorf("parsing tool result content[%d]: %w", i, err)
+				}
+				contentItems = append(contentItems, parsed)
+			}
+		}
+		c := NewToolResultContent(toolUseID, contentItems, isError)
 		c.Annotations = annotations
 		c.Meta = meta
 		return c, nil
