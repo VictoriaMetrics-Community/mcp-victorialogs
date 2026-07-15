@@ -8,7 +8,7 @@ require (
 	github.com/VictoriaMetrics/VictoriaLogs v1.47.1-0.20260225221819-a408207c2242
 	github.com/VictoriaMetrics/metrics v1.43.1
 	github.com/blevesearch/bleve/v2 v2.5.7
-	github.com/mark3labs/mcp-go v0.48.0
+	github.com/mark3labs/mcp-go v0.56.0
 	github.com/tmc/langchaingo v0.1.14
 )
 
@@ -45,6 +45,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.8 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
