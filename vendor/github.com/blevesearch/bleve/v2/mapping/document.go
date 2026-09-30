@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/blevesearch/bleve/v2/document"
 	"github.com/blevesearch/bleve/v2/registry"
 	"github.com/blevesearch/bleve/v2/util"
 )
@@ -44,6 +45,7 @@ type DocumentMapping struct {
 	Dynamic              bool                        `json:"dynamic"`
 	Properties           map[string]*DocumentMapping `json:"properties,omitempty"`
 	Fields               []*FieldMapping             `json:"fields,omitempty"`
+	Nested               bool                        `json:"nested,omitempty"`
 	DefaultAnalyzer      string                      `json:"default_analyzer,omitempty"`
 	DefaultSynonymSource string                      `json:"default_synonym_source,omitempty"`
 
@@ -102,7 +104,7 @@ func (dm *DocumentMapping) Validate(cache *registry.Cache,
 
 func validateFieldType(field *FieldMapping) error {
 	switch field.Type {
-	case "text", "datetime", "number", "boolean", "geopoint", "geoshape", "IP":
+	case "text", "datetime", "number", "boolean", "geopoint", "geoshape", "geoshape_v2", "IP":
 		return nil
 	default:
 		return fmt.Errorf("field: '%s', unknown field type: '%s'",
@@ -230,12 +232,34 @@ func NewDocumentMapping() *DocumentMapping {
 	}
 }
 
+// NewNestedDocumentMapping returns a new document
+// mapping that treats sub-documents as nested
+// objects.
+func NewNestedDocumentMapping() *DocumentMapping {
+	return &DocumentMapping{
+		Nested:  true,
+		Enabled: true,
+		Dynamic: true,
+	}
+}
+
 // NewDocumentStaticMapping returns a new document
 // mapping that will not automatically index parts
 // of a document without an explicit mapping.
 func NewDocumentStaticMapping() *DocumentMapping {
 	return &DocumentMapping{
 		Enabled: true,
+	}
+}
+
+// NewNestedDocumentStaticMapping returns a new document
+// mapping that treats sub-documents as nested
+// objects and will not automatically index parts
+// of the nested document without an explicit mapping.
+func NewNestedDocumentStaticMapping() *DocumentMapping {
+	return &DocumentMapping{
+		Enabled: true,
+		Nested:  true,
 	}
 }
 
@@ -312,6 +336,11 @@ func (dm *DocumentMapping) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return err
 			}
+		case "nested":
+			err := util.UnmarshalJSON(v, &dm.Nested)
+			if err != nil {
+				return err
+			}
 		case "default_analyzer":
 			err := util.UnmarshalJSON(v, &dm.DefaultAnalyzer)
 			if err != nil {
@@ -381,6 +410,18 @@ func (dm *DocumentMapping) defaultSynonymSource(path []string) string {
 	return rv
 }
 
+// baseType returns the base type of v by dereferencing pointers
+func baseType(v interface{}) reflect.Type {
+	if v == nil {
+		return nil
+	}
+	t := reflect.TypeOf(v)
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	return t
+}
+
 func (dm *DocumentMapping) walkDocument(data interface{}, path []string, indexes []uint64, context *walkContext) {
 	// allow default "json" tag to be overridden
 	structTagKey := dm.StructTagKey
@@ -434,11 +475,39 @@ func (dm *DocumentMapping) walkDocument(data interface{}, path []string, indexes
 			}
 		}
 	case reflect.Slice, reflect.Array:
+		subDocMapping, _ := dm.documentMappingForPathElements(path)
+		allowNested := subDocMapping != nil && subDocMapping.Nested
 		for i := 0; i < val.Len(); i++ {
-			if val.Index(i).CanInterface() {
-				fieldVal := val.Index(i).Interface()
-				dm.processProperty(fieldVal, path, append(indexes, uint64(i)), context)
+			// for each array element, check if it can be represented as an interface
+			idxVal := val.Index(i)
+			// skip invalid values
+			if !idxVal.CanInterface() {
+				continue
 			}
+			// get the actual value in interface form
+			actual := idxVal.Interface()
+			// if nested mapping, only create nested document for object elements
+			if allowNested && actual != nil {
+				// check the kind of the actual value, is it an object (struct or map)?
+				typ := baseType(actual)
+				if typ == nil {
+					continue
+				}
+				kind := typ.Kind()
+				// only create nested docs for real JSON objects
+				if kind == reflect.Struct || kind == reflect.Map {
+					// Create nested document only for only object elements
+					nestedDocument := document.NewDocument(
+						fmt.Sprintf("%s_$%s_$%d", context.doc.ID(), encodePath(path), i))
+					nestedContext := context.im.newWalkContext(nestedDocument, dm)
+					dm.processProperty(actual, path, append(indexes, uint64(i)), nestedContext)
+					context.doc.AddNestedDocument(nestedDocument)
+					continue
+				}
+			}
+			// non-nested mapping, or non-object element in nested mapping
+			// process the element normally
+			dm.processProperty(actual, path, append(indexes, uint64(i)), context)
 		}
 	case reflect.Ptr:
 		ptrElem := val.Elem()
@@ -488,6 +557,8 @@ func (dm *DocumentMapping) processProperty(property interface{}, path []string, 
 					fieldMapping.processGeoPoint(property, pathString, path, indexes, context)
 				case "vector_base64":
 					fieldMapping.processVectorBase64(property, pathString, path, indexes, context)
+				case "geoshape_v2":
+					fieldMapping.processGeoShapeV2(property, pathString, path, context)
 				default:
 					fieldMapping.processString(propertyValueString, pathString, path, indexes, context)
 				}
@@ -572,6 +643,8 @@ func (dm *DocumentMapping) processProperty(property interface{}, path []string, 
 						fieldMapping.processGeoPoint(property, pathString, path, indexes, context)
 					case "geoshape":
 						fieldMapping.processGeoShape(property, pathString, path, indexes, context)
+					case "geoshape_v2":
+						fieldMapping.processGeoShapeV2(property, pathString, path, context)
 					}
 				}
 			}
@@ -596,6 +669,9 @@ func (dm *DocumentMapping) processProperty(property interface{}, path []string, 
 					walkDocument = true
 				case "geoshape":
 					fieldMapping.processGeoShape(property, pathString, path, indexes, context)
+					walkDocument = true
+				case "geoshape_v2":
+					fieldMapping.processGeoShapeV2(property, pathString, path, context)
 					walkDocument = true
 				default:
 					walkDocument = true

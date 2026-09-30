@@ -26,26 +26,26 @@ import (
 	segment "github.com/blevesearch/scorch_segment_api/v2"
 )
 
-var TermSeparator byte = 0xff
-
-var TermSeparatorSplitSlice = []byte{TermSeparator}
-
 type SegmentSnapshot struct {
 	// this flag is needed to identify whether this
 	// segment was mmaped recently, in which case
 	// we consider the loading cost of the metadata
 	// as part of IO stats.
-	mmaped        uint32
-	id            uint64
-	segment       segment.Segment
-	deleted       *roaring.Bitmap
-	creator       string
-	stats         *fieldStats
+	mmaped  uint32
+	id      uint64
+	segment segment.Segment
+	deleted *roaring.Bitmap
+	creator string
+	stats   *fieldStats
+
 	updatedFields map[string]*index.UpdateFieldInfo
 
 	cachedMeta *cachedMeta
 
 	cachedDocs *cachedDocs
+
+	rootCountOnce sync.Once
+	rootCount     uint64
 }
 
 func (s *SegmentSnapshot) Segment() segment.Segment {
@@ -93,6 +93,27 @@ func (s *SegmentSnapshot) FileSize() int64 {
 	return fi.Size()
 }
 
+func (s *SegmentSnapshot) LiveFileSize() int64 {
+	fullSize := float64(s.FullSize())
+	if fullSize <= 0 {
+		return 0
+	}
+
+	liveSize := float64(s.LiveSize())
+	if liveSize <= 0 {
+		return 0
+	}
+
+	fileSize := float64(s.FileSize())
+	if fileSize <= 0 {
+		return 0
+	}
+
+	liveRatio := liveSize / fullSize
+
+	return int64(fileSize * liveRatio)
+}
+
 func (s *SegmentSnapshot) Close() error {
 	return s.segment.Close()
 }
@@ -111,6 +132,20 @@ func (s *SegmentSnapshot) Count() uint64 {
 		rv -= s.deleted.GetCardinality()
 	}
 	return rv
+}
+
+// this counts the root documents in the segment this differs from Count() in that
+// Count() counts all live documents including nested children, whereas this method
+// counts only root live documents
+func (s *SegmentSnapshot) CountRoot() uint64 {
+	s.rootCountOnce.Do(func() {
+		if nsb, ok := s.segment.(segment.NestedSegment); ok {
+			s.rootCount = nsb.CountRoot(s.deleted)
+		} else {
+			s.rootCount = s.Count()
+		}
+	})
+	return s.rootCount
 }
 
 func (s *SegmentSnapshot) DocNumbers(docIDs []string) (*roaring.Bitmap, error) {
@@ -220,7 +255,7 @@ func (cfd *cachedFieldDocs) prepareField(field string, ss *SegmentSnapshot) {
 		for err2 == nil && nextPosting != nil {
 			docNum := nextPosting.Number()
 			cfd.docs[docNum] = append(cfd.docs[docNum], []byte(next.Term)...)
-			cfd.docs[docNum] = append(cfd.docs[docNum], TermSeparator)
+			cfd.docs[docNum] = append(cfd.docs[docNum], index.DocValueTermSeparator)
 			cfd.size += uint64(len(next.Term) + 1) // map value
 			nextPosting, err2 = postingsItr.Next()
 		}
@@ -241,7 +276,7 @@ func (cfd *cachedFieldDocs) prepareField(field string, ss *SegmentSnapshot) {
 
 type cachedDocs struct {
 	size  uint64
-	m     sync.Mutex                  // As the cache is asynchronously prepared, need a lock
+	m     sync.RWMutex                // As the cache is asynchronously prepared, need a lock
 	cache map[string]*cachedFieldDocs // Keyed by field
 }
 
@@ -283,14 +318,14 @@ func (c *cachedDocs) prepareFields(wantedFields []string, ss *SegmentSnapshot) e
 
 // hasFields returns true if the cache has all the given fields
 func (c *cachedDocs) hasFields(fields []string) bool {
-	c.m.Lock()
+	c.m.RLock()
 	for _, field := range fields {
 		if _, exists := c.cache[field]; !exists {
-			c.m.Unlock()
+			c.m.RUnlock()
 			return false // found a field not in cache
 		}
 	}
-	c.m.Unlock()
+	c.m.RUnlock()
 	return true
 }
 
@@ -311,17 +346,17 @@ func (c *cachedDocs) updateSizeLOCKED() {
 
 func (c *cachedDocs) visitDoc(localDocNum uint64,
 	fields []string, visitor index.DocValueVisitor) {
-	c.m.Lock()
+	c.m.RLock()
 
 	for _, field := range fields {
 		if cachedFieldDocs, exists := c.cache[field]; exists {
-			c.m.Unlock()
+			c.m.RUnlock()
 			<-cachedFieldDocs.readyCh
-			c.m.Lock()
+			c.m.RLock()
 
 			if tlist, exists := cachedFieldDocs.docs[localDocNum]; exists {
 				for {
-					i := bytes.Index(tlist, TermSeparatorSplitSlice)
+					i := bytes.IndexByte(tlist, index.DocValueTermSeparator)
 					if i < 0 {
 						break
 					}
@@ -332,32 +367,42 @@ func (c *cachedDocs) visitDoc(localDocNum uint64,
 		}
 	}
 
-	c.m.Unlock()
-}
-
-// the purpose of the cachedMeta is to simply allow the user of this type to record
-// and cache certain meta data information (specific to the segment) that can be
-// used across calls to save compute on the same.
-// for example searcher creations on the same index snapshot can use this struct
-// to help and fetch the backing index size information which can be used in
-// memory usage calculation thereby deciding whether to allow a query or not.
-type cachedMeta struct {
-	m    sync.RWMutex
-	meta map[string]interface{}
-}
-
-func (c *cachedMeta) updateMeta(field string, val interface{}) {
-	c.m.Lock()
-	if c.meta == nil {
-		c.meta = make(map[string]interface{})
-	}
-	c.meta[field] = val
-	c.m.Unlock()
-}
-
-func (c *cachedMeta) fetchMeta(field string) (rv interface{}) {
-	c.m.RLock()
-	rv = c.meta[field]
 	c.m.RUnlock()
-	return rv
+}
+
+// cachedMeta is a simple wrapper around sync.Map to provide typed
+// access to cached metadata values for segments.
+type cachedMeta struct {
+	meta sync.Map
+}
+
+func newCachedMeta() *cachedMeta {
+	return &cachedMeta{
+		meta: sync.Map{},
+	}
+}
+
+// store the value for a field in the cache, overwriting any existing value.
+func (c *cachedMeta) store(field string, val interface{}) {
+	c.meta.Store(field, val)
+}
+
+// load the value for a field from the cache, returning the value
+// and a boolean indicating whether the value was present.
+func (c *cachedMeta) load(field string) (rv interface{}, ok bool) {
+	return c.meta.Load(field)
+}
+
+// contains reports whether the cache has an entry for the given field.
+func (c *cachedMeta) contains(field string) bool {
+	_, ok := c.meta.Load(field)
+	return ok
+}
+
+func (s *SegmentSnapshot) Ancestors(docNum uint64, prealloc []index.AncestorID) []index.AncestorID {
+	nsb, ok := s.segment.(segment.NestedSegment)
+	if !ok {
+		return append(prealloc, index.NewAncestorID(docNum))
+	}
+	return nsb.Ancestors(docNum, prealloc)
 }

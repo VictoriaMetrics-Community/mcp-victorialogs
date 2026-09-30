@@ -15,15 +15,19 @@
 package scorch
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"github.com/blevesearch/bleve/v2/index/scorch/mergeplan"
 	"github.com/blevesearch/bleve/v2/registry"
 	"github.com/blevesearch/bleve/v2/util"
 	index "github.com/blevesearch/bleve_index_api"
@@ -40,11 +44,13 @@ var ErrClosed = fmt.Errorf("scorch closed")
 type Scorch struct {
 	nextSegmentID uint64
 	stats         Stats
+	zapStats      segment.Stats
 	iStats        internalStats
 
 	readOnly      bool
 	version       uint8
 	config        map[string]interface{}
+	segmentConfig map[string]interface{}
 	analysisQueue *index.AnalysisQueue
 	path          string
 
@@ -65,6 +71,9 @@ type Scorch struct {
 	// must be accessed within the rootLock as it is accessed by the asynchronous cleanup routine.
 	copyScheduled map[string]int
 
+	persisterOptions    *persisterOptions
+	mergePlannerOptions *mergeplan.MergePlanOptions
+
 	numSnapshotsToKeep       int
 	rollbackRetentionFactor  float64
 	checkPoints              []*snapshotMetaData
@@ -75,8 +84,10 @@ type Scorch struct {
 	merges                   chan *segmentMerge
 	introducerNotifier       chan *epochWatcher
 	persisterNotifier        chan *epochWatcher
-	rootBolt                 *bolt.DB
+	rootBolt                 *util.RootBoltImpl
 	asyncTasks               sync.WaitGroup
+
+	trainer trainer
 
 	onEvent      func(event Event) bool
 	onAsyncError func(err error, path string)
@@ -88,6 +99,36 @@ type Scorch struct {
 	spatialPlugin index.SpatialAnalyzerPlugin
 }
 
+// trainer interface is used for training an index that has the concept
+// of "learning". Naturally, a vector index is one such thing that would
+// implement this interface. There can be multiple implementations of the
+// training itself even for the same index type.
+//
+// this component is not supposed to interact with the other master routines
+// of scorch and will be used only for training the index before the actual data
+// ingestion starts. The routine should also be released once the
+// training is marked as complete - which can be done using the BoltTrainCompleteKey
+// key and a bool value. However the struct is still maintained for the pointer to
+// the instance so that we can use in the later stages of the index lifecycle.
+type trainer interface {
+	// ephemeral
+	trainLoop()
+	// for the training state and the ingestion of the samples
+	train(batch *index.Batch) error
+
+	// to load the metadata from the bolt under the BoltTrainerKey
+	loadTrainedData(*util.BoltBucketImpl) error
+	// to fetch the internal data from the component
+	getInternal(key []byte) ([]byte, error)
+
+	// trainer specific file transfer operations
+	copyFileLOCKED(file string, d index.IndexDirectory) error
+	updateBolt(snapshotsBucket *util.BoltBucketImpl, key []byte, value []byte) error
+
+	dropFileWriterIDs(ids map[string]struct{}) error
+	fileWriterIDsInUse() (map[string]struct{}, error)
+}
+
 type ScorchErrorType string
 
 func (t ScorchErrorType) Error() string {
@@ -96,10 +137,9 @@ func (t ScorchErrorType) Error() string {
 
 // ErrType values for ScorchError
 const (
-	ErrAsyncPanic   = ScorchErrorType("async panic error")
-	ErrPersist      = ScorchErrorType("persist error")
-	ErrCleanup      = ScorchErrorType("cleanup error")
-	ErrOptionsParse = ScorchErrorType("options parse error")
+	ErrAsyncPanic = ScorchErrorType("async panic error")
+	ErrPersist    = ScorchErrorType("persist error")
+	ErrCleanup    = ScorchErrorType("cleanup error")
 )
 
 // ScorchError is passed to onAsyncError when errors are
@@ -154,6 +194,7 @@ func NewScorch(storeName string,
 		forceMergeRequestCh:  make(chan *mergerCtrl, 1),
 		segPlugin:            defaultSegmentPlugin,
 		copyScheduled:        map[string]int{},
+		segmentConfig:        make(map[string]interface{}),
 	}
 
 	forcedSegmentType, forcedSegmentVersion, err := configForceSegmentTypeVersion(config)
@@ -167,6 +208,14 @@ func NewScorch(storeName string,
 			return nil, err
 		}
 	}
+
+	segConfig, ok := config["segmentConfig"].(map[string]interface{})
+	if ok {
+		rv.segmentConfig = segConfig
+	}
+
+	// NOTE: always register the stats handler in the config map to track zap layer stats
+	rv.segmentConfig[segment.StatsKey] = &rv.zapStats
 
 	typ, ok := config["spatialPlugin"].(string)
 	if ok {
@@ -192,17 +241,56 @@ func NewScorch(storeName string,
 	if ok {
 		rv.onAsyncError = RegistryAsyncErrorCallbacks[aecbName]
 	}
-	// validate any custom persistor options to
-	// prevent an async error in the persistor routine
-	_, err = rv.parsePersisterOptions()
+
+	rv.numSnapshotsToKeep = NumSnapshotsToKeep
+	if v, ok := rv.config["numSnapshotsToKeep"]; ok {
+		var n int
+		var err error
+		if n, err = parseToInteger(v); err != nil {
+			return nil, fmt.Errorf("numSnapshotsToKeep parse err: %v", err)
+		}
+		if n > 0 {
+			rv.numSnapshotsToKeep = n
+		}
+	}
+
+	rv.rollbackSamplingInterval = RollbackSamplingInterval
+	if v, ok := rv.config["rollbackSamplingInterval"]; ok {
+		var d time.Duration
+		var err error
+		if d, err = parseToTimeDuration(v); err != nil {
+			return nil, fmt.Errorf("rollbackSamplingInterval parse err: %v", err)
+		}
+		rv.rollbackSamplingInterval = d
+	}
+
+	rv.rollbackRetentionFactor = RollbackRetentionFactor
+	if v, ok := rv.config["rollbackRetentionFactor"]; ok {
+		var r float64
+		var err error
+		if r, err = parseToFloat(v); err != nil {
+			return nil, fmt.Errorf("rollbackRetentionFactor parse err: %v", err)
+		}
+		if r < 0 || r > 1 {
+			return nil, fmt.Errorf("rollbackRetentionFactor must be between 0 and 1")
+		}
+		rv.rollbackRetentionFactor = r
+	}
+
+	po, err := rv.parsePersisterOptions()
 	if err != nil {
 		return nil, err
 	}
-	// validate any custom merge planner options to
-	// prevent an async error in the merger routine
-	_, err = rv.parseMergePlannerOptions()
+	rv.persisterOptions = po
+
+	mpo, err := rv.parseMergePlannerOptions(po)
 	if err != nil {
 		return nil, err
+	}
+	rv.mergePlannerOptions = mpo
+
+	if trainer := initTrainer(rv, config); trainer != nil {
+		rv.trainer = trainer
 	}
 
 	return rv, nil
@@ -259,6 +347,11 @@ func (s *Scorch) Open() error {
 	s.asyncTasks.Add(1)
 	go s.introducerLoop()
 
+	if s.trainer != nil {
+		s.asyncTasks.Add(1)
+		go s.trainer.trainLoop()
+	}
+
 	if !s.readOnly && s.path != "" {
 		s.asyncTasks.Add(1)
 		go s.persisterLoop()
@@ -279,6 +372,7 @@ func (s *Scorch) openBolt() error {
 		s.unsafeBatch = true
 	}
 
+	// bolt options
 	rootBoltOpt := *bolt.DefaultOptions
 	if s.readOnly {
 		rootBoltOpt.ReadOnly = true
@@ -312,7 +406,7 @@ func (s *Scorch) openBolt() error {
 	rootBoltPath := s.path + string(os.PathSeparator) + "root.bolt"
 	var err error
 	if s.path != "" {
-		s.rootBolt, err = bolt.Open(rootBoltPath, 0o600, &rootBoltOpt)
+		s.rootBolt, err = util.OpenBolt(rootBoltPath, 0o600, &rootBoltOpt)
 		if err != nil {
 			return err
 		}
@@ -339,42 +433,6 @@ func (s *Scorch) openBolt() error {
 		err := s.removeOldZapFiles() // Before persister or merger create any new files.
 		if err != nil {
 			_ = s.Close()
-			return err
-		}
-	}
-
-	s.numSnapshotsToKeep = NumSnapshotsToKeep
-	if v, ok := s.config["numSnapshotsToKeep"]; ok {
-		var t int
-		if t, err = parseToInteger(v); err != nil {
-			return fmt.Errorf("numSnapshotsToKeep parse err: %v", err)
-		}
-		if t > 0 {
-			s.numSnapshotsToKeep = t
-		}
-	}
-
-	s.rollbackSamplingInterval = RollbackSamplingInterval
-	if v, ok := s.config["rollbackSamplingInterval"]; ok {
-		var t time.Duration
-		if t, err = parseToTimeDuration(v); err != nil {
-			return fmt.Errorf("rollbackSamplingInterval parse err: %v", err)
-		}
-		s.rollbackSamplingInterval = t
-	}
-
-	s.rollbackRetentionFactor = RollbackRetentionFactor
-	if v, ok := s.config["rollbackRetentionFactor"]; ok {
-		var r float64
-		if r, ok = v.(float64); ok {
-			return fmt.Errorf("rollbackRetentionFactor parse err: %v", err)
-		}
-		s.rollbackRetentionFactor = r
-	}
-
-	typ, ok := s.config["spatialPlugin"].(string)
-	if ok {
-		if err := s.loadSpatialAnalyzerPlugin(typ); err != nil {
 			return err
 		}
 	}
@@ -424,6 +482,24 @@ func (s *Scorch) Delete(id string) error {
 	return s.Batch(b)
 }
 
+func (s *Scorch) isTrained(batch *index.Batch) (bool, error) {
+	trained := true
+	if len(batch.IndexOps) > 0 && s.trainer != nil {
+		val, err := s.getInternal(util.BoltTrainCompleteKey)
+		if err != nil {
+			return false, err
+		}
+
+		if val != nil {
+			trained, err = strconv.ParseBool(string(val))
+			if err != nil {
+				return false, err
+			}
+		}
+	}
+	return trained, nil
+}
+
 // Batch applices a batch of changes to the index atomically
 func (s *Scorch) Batch(batch *index.Batch) (err error) {
 	start := time.Now()
@@ -433,6 +509,15 @@ func (s *Scorch) Batch(batch *index.Batch) (err error) {
 	defer func() {
 		s.fireEvent(EventKindBatchIntroduction, time.Since(start))
 	}()
+
+	trained, err := s.isTrained(batch)
+	if err != nil {
+		return err
+	}
+
+	if !trained {
+		return fmt.Errorf("index is not trained yet")
+	}
 
 	resultChan := make(chan index.Document, len(batch.IndexOps))
 
@@ -494,10 +579,9 @@ func (s *Scorch) Batch(batch *index.Batch) (err error) {
 
 	var newSegment segment.Segment
 	var bufBytes uint64
-	stats := newFieldStats()
 
 	if len(analysisResults) > 0 {
-		newSegment, bufBytes, err = s.segPlugin.New(analysisResults)
+		newSegment, bufBytes, err = s.segPlugin.NewUsing(analysisResults, s.segmentConfig)
 		if err != nil {
 			return err
 		}
@@ -506,14 +590,11 @@ func (s *Scorch) Batch(batch *index.Batch) (err error) {
 				segB.BytesWritten())
 		}
 		atomic.AddUint64(&s.iStats.newSegBufBytesAdded, bufBytes)
-		if fsr, ok := newSegment.(segment.FieldStatsReporter); ok {
-			fsr.UpdateFieldStats(stats)
-		}
 	} else {
 		atomic.AddUint64(&s.stats.TotBatchesEmpty, 1)
 	}
 
-	err = s.prepareSegment(newSegment, ids, batch.InternalOps, batch.PersistedCallback(), stats)
+	err = s.prepareSegment(newSegment, ids, batch.InternalOps, batch.PersistedCallback())
 	if err != nil {
 		if newSegment != nil {
 			_ = newSegment.Close()
@@ -532,16 +613,37 @@ func (s *Scorch) Batch(batch *index.Batch) (err error) {
 	return err
 }
 
+func (s *Scorch) getInternal(key []byte) ([]byte, error) {
+	s.rootLock.RLock()
+	defer s.rootLock.RUnlock()
+
+	switch string(key) {
+	case string(util.BoltTrainCompleteKey):
+		if s.trainer != nil {
+			return s.trainer.getInternal(key)
+		} else {
+			return nil, fmt.Errorf("get on BoltTrainCompleteKey is not supported" +
+				" with this build")
+		}
+	}
+	return nil, nil
+}
+
+func (s *Scorch) Train(batch *index.Batch) error {
+	if s.trainer != nil {
+		return s.trainer.train(batch)
+	}
+	return fmt.Errorf("training is not supported with this build")
+}
+
 func (s *Scorch) prepareSegment(newSegment segment.Segment, ids []string,
-	internalOps map[string][]byte, persistedCallback index.BatchCallback, stats *fieldStats,
-) error {
+	internalOps map[string][]byte, persistedCallback index.BatchCallback) error {
 	// new introduction
 	introduction := &segmentIntroduction{
 		id:                atomic.AddUint64(&s.nextSegmentID, 1),
 		data:              newSegment,
 		ids:               ids,
 		internal:          internalOps,
-		stats:             stats,
 		applied:           make(chan error),
 		persistedCallback: persistedCallback,
 	}
@@ -741,6 +843,23 @@ func (s *Scorch) StatsMap() map[string]interface{} {
 			m["field:"+fieldName+":"+statName] = val
 		}
 	}
+
+	aggVectorStats := newFieldStats()
+	for _, segmentSnapshot := range indexSnapshot.Segments() {
+		if vsr, ok := segmentSnapshot.Segment().(segment.VectorFieldStatsReporter); ok {
+			segStats := newFieldStats()
+			vsr.UpdateVectorFieldStats(segStats)
+			aggVectorStats.Aggregate(segStats)
+		}
+	}
+	for statName, stats := range aggVectorStats.Fetch() {
+		for fieldName, val := range stats {
+			m["field:"+fieldName+":"+statName] = val
+		}
+	}
+
+	// zap layer stats that are continously updated throughout the index lifecycle
+	m[segment.StatsKey] = s.zapStats.StatsMap()
 	return m
 }
 
@@ -799,6 +918,12 @@ func analyze(d index.Document, fn customAnalyzerPluginInitFunc) {
 			}
 		}
 	})
+	if nd, ok := d.(index.NestedDocument); ok {
+		nd.VisitNestedDocuments(func(doc index.Document) {
+			doc.AddIDField()
+			analyze(doc, fn)
+		})
+	}
 }
 
 func (s *Scorch) AddEligibleForRemoval(epoch uint64) {
@@ -890,6 +1015,20 @@ func parseToInteger(i interface{}) (int, error) {
 	}
 }
 
+func parseToFloat(i interface{}) (float64, error) {
+	switch v := i.(type) {
+	case float64:
+		return v, nil
+	case float32:
+		return float64(v), nil
+	case int:
+		return float64(v), nil
+
+	default:
+		return 0, fmt.Errorf("expects float64, float32 or int value")
+	}
+}
+
 // Holds Zap's field level stats at a segment level
 type fieldStats struct {
 	// StatName -> FieldName -> value
@@ -971,6 +1110,67 @@ func (s *Scorch) CopyReader() index.CopyReader {
 	return rv
 }
 
+func (s *Scorch) SetPathInBolt(key []byte, value []byte) error {
+	tx, err := s.rootBolt.Begin(true)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	snapshotsBucket, err := tx.CreateBucketIfNotExists(util.BoltSnapshotsBucket)
+	if err != nil {
+		return err
+	}
+
+	if s.trainer != nil {
+		// currently this is specific to trained index file update
+		err = s.trainer.updateBolt(snapshotsBucket, key, value)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return s.rootBolt.Sync()
+}
+
+// CopyFile copies a specific file to a destination directory which has an access to a bleve index
+// doing a io.Copy() isn't enough because the file needs to be tracked in bolt file as well
+func (s *Scorch) CopyFile(file string, d index.IndexDirectory) error {
+	s.rootLock.Lock()
+	defer s.rootLock.Unlock()
+
+	dest, err := d.GetWriter(filepath.Join("store", file))
+	if err != nil {
+		return err
+	}
+
+	source, err := os.Open(filepath.Join(s.path, file))
+	if err != nil {
+		return err
+	}
+
+	defer source.Close()
+	defer dest.Close()
+	_, err = io.Copy(dest, source)
+	if err != nil {
+		return err
+	}
+
+	// this code is currently specific to copying trained data but is future proofed for other files
+	// to be updated in the dest's bolt
+	err = s.trainer.copyFileLOCKED(file, d)
+	return err
+}
+
 // external API to fire a scorch event (EventKindIndexStart) externally from bleve
 func (s *Scorch) FireIndexEvent() {
 	s.fireEvent(EventKindIndexStart, 0)
@@ -1002,7 +1202,8 @@ func (s *Scorch) OpenMeta() error {
 
 // Merge and update deleted field info and rewrite index mapping
 func (s *Scorch) updateBolt(fieldInfo map[string]*index.UpdateFieldInfo, mappingBytes []byte) error {
-	return s.rootBolt.Update(func(tx *bolt.Tx) error {
+	filePath := s.path + string(os.PathSeparator) + "root.bolt"
+	return s.rootBolt.Update(func(tx *util.BoltTxImpl) error {
 		snapshots := tx.Bucket(util.BoltSnapshotsBucket)
 		if snapshots == nil {
 			return nil
@@ -1015,27 +1216,69 @@ func (s *Scorch) updateBolt(fieldInfo map[string]*index.UpdateFieldInfo, mapping
 				fmt.Printf("unable to parse segment epoch %x, continuing", k)
 				continue
 			}
-			snapshot := snapshots.Bucket(k)
+			snapshot := snapshots.GetBucket(k)
+			metaBucket := snapshot.GetBucket(util.BoltMetaDataKey)
+			if metaBucket == nil {
+				return fmt.Errorf("meta-data bucket missing")
+			}
+
+			writer, err := util.NewFileWriter([]byte(filePath))
+			if err != nil {
+				return fmt.Errorf("unable to load correct writer: %v", err)
+			}
+
+			fileWriterID, err := metaBucket.Get(util.BoltMetaDataFileWriterIDKey, nil)
+			if err != nil {
+				return fmt.Errorf("unable to get file writer id: %v", err)
+			}
+			if fileWriterID == nil {
+				return fmt.Errorf("file writer id missing in meta data")
+			}
+			reader, err := util.NewFileReader(string(fileWriterID), []byte(filePath))
+			if err != nil {
+				return fmt.Errorf("unable to load correct reader: %v", err)
+			}
+
+			err = metaBucket.Put(util.BoltMetaDataFileWriterIDKey, []byte(writer.Id()), writer)
+			if err != nil {
+				return err
+			}
+
 			cc := snapshot.Cursor()
 			for kk, _ := cc.First(); kk != nil; kk, _ = cc.Next() {
 				if kk[0] == util.BoltInternalKey[0] {
-					internalBucket := snapshot.Bucket(kk)
+					internalBucket := snapshot.GetBucket(kk)
 					if internalBucket == nil {
 						return fmt.Errorf("segment key, but bucket missing %x", kk)
 					}
-					err = internalBucket.Put(util.MappingInternalKey, mappingBytes)
+
+					internalVals := make(map[string][]byte)
+					err := internalBucket.ForEach(func(key []byte, val []byte) error {
+						internalVals[string(key)] = val
+						return nil
+					}, reader)
 					if err != nil {
 						return err
 					}
+
+					for key, val := range internalVals {
+						err = internalBucket.Put([]byte(key), val, writer)
+						if err != nil {
+							return err
+						}
+					}
 				} else if kk[0] != util.BoltMetaDataKey[0] {
-					segmentBucket := snapshot.Bucket(kk)
+					segmentBucket := snapshot.GetBucket(kk)
 					if segmentBucket == nil {
 						return fmt.Errorf("segment key, but bucket missing %x", kk)
 					}
 					var updatedFields map[string]*index.UpdateFieldInfo
-					updatedFieldBytes := segmentBucket.Get(util.BoltUpdatedFieldsKey)
+					updatedFieldBytes, err := segmentBucket.Get(util.BoltUpdatedFieldsKey, reader)
+					if err != nil {
+						return fmt.Errorf("error getting updated field bytes: %v", err)
+					}
 					if updatedFieldBytes != nil {
-						err := json.Unmarshal(updatedFieldBytes, &updatedFields)
+						err = json.Unmarshal(updatedFieldBytes, &updatedFields)
 						if err != nil {
 							return fmt.Errorf("error reading updated field bytes: %v", err)
 						}
@@ -1054,17 +1297,232 @@ func (s *Scorch) updateBolt(fieldInfo map[string]*index.UpdateFieldInfo, mapping
 					} else {
 						updatedFields = fieldInfo
 					}
-					b, err := json.Marshal(updatedFields)
+					buf, err := json.Marshal(updatedFields)
 					if err != nil {
 						return err
 					}
-					err = segmentBucket.Put(util.BoltUpdatedFieldsKey, b)
+					err = segmentBucket.Put(util.BoltUpdatedFieldsKey, buf, writer)
 					if err != nil {
 						return err
+					}
+
+					deletedBytes, err := segmentBucket.Get(util.BoltDeletedKey, reader)
+					if err != nil {
+						return fmt.Errorf("error getting deleted bytes: %v", err)
+					}
+					if deletedBytes != nil {
+						err = segmentBucket.Put(util.BoltDeletedKey, deletedBytes, writer)
+						if err != nil {
+							return err
+						}
+					}
+
+					statBytes, err := segmentBucket.Get(util.BoltStatsKey, reader)
+					if err != nil {
+						return fmt.Errorf("error getting stats bytes: %v", err)
+					}
+					if statBytes != nil {
+						err = segmentBucket.Put(util.BoltStatsKey, statBytes, writer)
+						if err != nil {
+							return err
+						}
 					}
 				}
 			}
 		}
 		return nil
 	})
+}
+
+// returns the set of file callback writer ids in use by all of the segments and boltdb
+func (s *Scorch) FileWriterIDsInUse() (map[string]struct{}, error) {
+	s.rootLock.RLock()
+	keyMap := make(map[string]struct{})
+	for _, segmentSnapShot := range s.root.segment {
+		if seg, ok := segmentSnapShot.segment.(segment.SegmentWithCallbacks); ok {
+			keyMap[seg.CallbackId()] = struct{}{}
+		}
+	}
+
+	if s.trainer != nil {
+		trainerKeys, err := s.trainer.fileWriterIDsInUse()
+		if err != nil {
+			return nil, err
+		}
+		for k, _ := range trainerKeys {
+			keyMap[k] = struct{}{}
+		}
+	}
+
+	boltKeys, err := s.boltFileWriterIDsInUse()
+	if err != nil {
+		return nil, err
+	}
+
+	for k, _ := range boltKeys {
+		keyMap[k] = struct{}{}
+	}
+	s.rootLock.RUnlock()
+
+	return keyMap, nil
+}
+
+// removes all file callback writer ids in use from all of the segments and boltdb
+// boltdb is updated with the latest callback writer while segments are force
+// merged blockingly until snapshot is persisted with the latest callback writer
+func (s *Scorch) DropFileWriterIDs(ids map[string]struct{}) error {
+	err := s.removeBoltFileWriterIDs(ids)
+	if err != nil {
+		return err
+	}
+
+	if s.trainer != nil {
+		err := s.trainer.dropFileWriterIDs(ids)
+		if err != nil {
+			return err
+		}
+	}
+
+	s.rootLock.Lock()
+	// create a done channel to ensure success of merge
+	ctx := context.Background()
+	doneCh := make(chan error)
+	ctx = context.WithValue(ctx, mergeDoneKey, doneCh)
+
+	// PARTIAL ROLLBACK WILL NOT BE SUPPORTED DURING THIS OPERATION
+	// this is done because all of the rollback snapshots
+	// are likely to have the same sequence numbers and
+	// morever, it is not functionally correct to hold
+	// data with writer ids that have been removed
+	prevNumSnapshotsToKeep := s.numSnapshotsToKeep
+	s.numSnapshotsToKeep = 1
+	defer func() {
+		// reset rollback snapshot retention
+		s.rootLock.Lock()
+		s.numSnapshotsToKeep = prevNumSnapshotsToKeep
+		s.rootLock.Unlock()
+	}()
+
+	// track the zapx files that are expected to be removed after
+	// the merge so that we can block until they are removed by the persister
+	filePaths := make([]string, 0)
+
+	var mergePlanner mergePlanFunc = func(ourSnapshot *IndexSnapshot) (*mergeplan.MergePlan, error) {
+		// Create a merge plan with the filtered segments and force a merge
+		// to remove the callback from the segments.
+		atomic.AddUint64(&s.stats.TotFileMergePlan, 1)
+
+		// filter all segments that have callbacks that need to be removed
+		// and add them to the list of segments to compact
+		segsToCompact := make([]mergeplan.Segment, 0)
+		for _, ss := range ourSnapshot.segment {
+			// only persisted segments needs to be checked
+			if _, ok := ss.segment.(segment.PersistedSegment); ok {
+				if segWithCallbacks, ok := ss.segment.(segment.SegmentWithCallbacks); ok {
+					if _, ok := ids[segWithCallbacks.CallbackId()]; ok {
+						segsToCompact = append(segsToCompact, ss)
+						filePaths = append(filePaths, zapFileName(ss.id))
+					}
+				}
+			}
+		}
+
+		// attempt a merge plan with the default merge planner options
+		mergePlan, err := mergeplan.Plan(segsToCompact, s.mergePlannerOptions)
+		if err != nil {
+			atomic.AddUint64(&s.stats.TotFileMergePlanErr, 1)
+			return nil, fmt.Errorf("merge plan creation err: %v", err)
+		}
+
+		// create a map to track segments included in the default merge plan
+		segDictionary := make(map[uint64]bool)
+		for _, seg := range segsToCompact {
+			segDictionary[seg.Id()] = true
+		}
+
+		// create a merge plan if the default merge planner is unable
+		// to create one with the given segments
+		if mergePlan == nil {
+			mergePlan = &mergeplan.MergePlan{
+				Tasks: make([]*mergeplan.MergeTask, 0),
+			}
+		}
+
+		// mark all segments included in the default merge plan
+		for _, task := range mergePlan.Tasks {
+			for _, seg := range task.Segments {
+				segDictionary[seg.Id()] = false
+			}
+		}
+
+		// Create additional merge tasks for segments that are unable to be merged
+		for _, seg := range segsToCompact {
+			if segDictionary[seg.Id()] {
+				mergePlan.Tasks = append(mergePlan.Tasks, &mergeplan.MergeTask{
+					Segments: []mergeplan.Segment{seg},
+				})
+			}
+		}
+
+		return mergePlan, nil
+	}
+
+	// set the merge plan func in the context for the merger to use when it receives the merge request
+	// this is to ensure that the merge request is triggered with the latest snapshot, thus avoiding
+	// any races
+	ctx = context.WithValue(ctx, mergePlanFuncKey, mergePlanner)
+
+	// trigger the merge with the force merge plan
+	s.forceMergeRequestCh <- &mergerCtrl{
+		ctx: ctx,
+	}
+	s.rootLock.Unlock()
+
+	// blockingly wait for merge to complete
+	err = <-doneCh
+	close(doneCh)
+	if err != nil {
+		return err
+	}
+
+	// wait for files to be cleaned up by persister
+	err = s.waitTillFileCleanup(filePaths)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// waitTillFileCleanup blocks until the given files are cleaned up by the persister or merger or
+// returns an error after a timeout. It does so by checking the index directory every 5 seconds
+// for the presence of the given files, and returns once they are no longer present.
+func (s *Scorch) waitTillFileCleanup(filePaths []string) error {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	timeout := time.After(5 * time.Minute)
+
+	for {
+		select {
+		case <-ticker.C:
+			files, err := os.ReadDir(s.path)
+			if err != nil {
+				return err
+			}
+			for _, f := range files {
+				fname := f.Name()
+				if filepath.Ext(fname) == ".zap" {
+					for _, filePath := range filePaths {
+						if fname == filePath {
+							continue
+						}
+					}
+				}
+			}
+			return nil
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for file cleanup for files: %v", filePaths)
+		}
+	}
 }

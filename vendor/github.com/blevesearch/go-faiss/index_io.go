@@ -16,7 +16,7 @@ func WriteIndex(idx Index, filename string) error {
 	cfname := C.CString(filename)
 	defer C.free(unsafe.Pointer(cfname))
 	if c := C.faiss_write_index_fname(idx.cPtr(), cfname); c != 0 {
-		return getLastError()
+		return newFaissError(ErrWriteIndexFailed, getLastError(), int(c))
 	}
 	return nil
 }
@@ -32,7 +32,7 @@ func WriteIndexIntoBuffer(idx Index) ([]byte, error) {
 		&tempBuf,
 	); c != 0 {
 		C.faiss_free_buf(&tempBuf)
-		return nil, getLastError()
+		return nil, newFaissError(ErrWriteIndexFailed, getLastError(), int(c))
 	}
 
 	// at this point, the idx has a valid ref count. furthermore, the index is
@@ -89,7 +89,7 @@ func ReadIndexFromBuffer(buf []byte, ioflags int) (*IndexImpl, error) {
 		size,
 		C.int(ioflags),
 		&idx.idx); c != 0 {
-		return nil, getLastError()
+		return nil, newFaissError(ErrReadIndexFailed, getLastError(), int(c))
 	}
 
 	ptr = nil
@@ -114,7 +114,47 @@ func ReadIndex(filename string, ioflags int) (*IndexImpl, error) {
 	defer C.free(unsafe.Pointer(cfname))
 	var idx faissIndex
 	if c := C.faiss_read_index_fname(cfname, C.int(ioflags), &idx.idx); c != 0 {
-		return nil, getLastError()
+		return nil, newFaissError(ErrReadIndexFailed, getLastError(), int(c))
 	}
 	return &IndexImpl{&idx}, nil
+}
+
+func WriteBinaryIndexIntoBuffer(idx BinaryIndex) ([]byte, error) {
+	// the values to be returned by the faiss APIs
+	tempBuf := (*C.uchar)(nil)
+	bufSize := C.size_t(0)
+
+	if c := C.faiss_write_index_binary_buf(
+		idx.bPtr(),
+		&bufSize,
+		&tempBuf,
+	); c != 0 {
+		C.faiss_free_buf(&tempBuf)
+		return nil, newFaissError(ErrWriteIndexFailed, getLastError(), int(c))
+	}
+
+	val := unsafe.Slice((*byte)(unsafe.Pointer(tempBuf)), uint(bufSize))
+
+	rv := make([]byte, uint(bufSize))
+	copy(rv, val)
+
+	C.faiss_free_buf(&tempBuf)
+	val = nil
+
+	return rv, nil
+}
+
+func ReadBinaryIndexFromBuffer(buf []byte, ioflags int) (*BinaryIndexImpl, error) {
+	ptr := (*C.uchar)(unsafe.Pointer(&buf[0]))
+	size := C.size_t(len(buf))
+
+	var bIdx faissBinaryIndex
+	if c := C.faiss_read_index_binary_buf(ptr,
+		size,
+		C.int(ioflags),
+		&bIdx.bIdx); c != 0 {
+		return nil, newFaissError(ErrReadIndexFailed, getLastError(), int(c))
+	}
+
+	return &BinaryIndexImpl{&bIdx}, nil
 }

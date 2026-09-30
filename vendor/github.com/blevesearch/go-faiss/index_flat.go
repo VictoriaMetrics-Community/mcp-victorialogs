@@ -21,7 +21,7 @@ func NewIndexFlat(d int, metric int) (*IndexFlat, error) {
 		C.idx_t(d),
 		C.FaissMetricType(metric),
 	); c != 0 {
-		return nil, getLastError()
+		return nil, newFaissError(ErrCreateIndexFailed, getLastError(), int(c))
 	}
 	return &IndexFlat{&idx}, nil
 }
@@ -43,14 +43,4 @@ func (idx *IndexFlat) Xb() []float32 {
 	var ptr *C.float
 	C.faiss_IndexFlat_xb(idx.cPtr(), &ptr, &size)
 	return (*[1 << 30]float32)(unsafe.Pointer(ptr))[:size:size]
-}
-
-// AsFlat casts idx to a flat index.
-// AsFlat panics if idx is not a flat index.
-func (idx *IndexImpl) AsFlat() *IndexFlat {
-	ptr := C.faiss_IndexFlat_cast(idx.cPtr())
-	if ptr == nil {
-		panic("index is not a flat index")
-	}
-	return &IndexFlat{&faissIndex{ptr}}
 }

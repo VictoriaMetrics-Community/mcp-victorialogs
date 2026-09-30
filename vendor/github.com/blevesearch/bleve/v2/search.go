@@ -15,9 +15,12 @@
 package bleve
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -522,6 +525,15 @@ func (ss *SearchStatus) Merge(other *SearchStatus) {
 	}
 }
 
+// TotalRelation constants describe the accuracy of SearchResult.Total.
+const (
+	// TotalRelationEq means Total is an exact count of all matching documents.
+	TotalRelationEq = "eq"
+	// TotalRelationGte means Total is a lower bound: collection stopped before
+	// draining every match, so the true match count is >= Total.
+	TotalRelationGte = "gte"
+)
+
 // A SearchResult describes the results of executing
 // a SearchRequest.
 //
@@ -537,14 +549,15 @@ func (ss *SearchStatus) Merge(other *SearchStatus) {
 // Took - The time taken to execute the search.
 // Facets - The facet results for the search.
 type SearchResult struct {
-	Status   *SearchStatus                  `json:"status"`
-	Request  *SearchRequest                 `json:"request,omitempty"`
-	Hits     search.DocumentMatchCollection `json:"hits"`
-	Total    uint64                         `json:"total_hits"`
-	Cost     uint64                         `json:"cost"`
-	MaxScore float64                        `json:"max_score"`
-	Took     time.Duration                  `json:"took"`
-	Facets   search.FacetResults            `json:"facets"`
+	Status        *SearchStatus                  `json:"status"`
+	Request       *SearchRequest                 `json:"request,omitempty"`
+	Hits          search.DocumentMatchCollection `json:"hits"`
+	Total         uint64                         `json:"total_hits"`
+	TotalRelation string                         `json:"total_relation"`
+	Cost          uint64                         `json:"cost"`
+	MaxScore      float64                        `json:"max_score"`
+	Took          time.Duration                  `json:"took"`
+	Facets        search.FacetResults            `json:"facets"`
 	// special fields that are applicable only for search
 	// results that are obtained from a presearch
 	SynonymResult search.FieldTermSynonymMap `json:"synonym_result,omitempty"`
@@ -625,9 +638,33 @@ func formatHit(rv *strings.Builder, hit *search.DocumentMatch, hitNumber int) *s
 		}
 	}
 	for otherFieldName, otherFieldValue := range hit.Fields {
+		if otherFieldName == NestedDocumentKey {
+			continue
+		}
 		if _, ok := hit.Fragments[otherFieldName]; !ok {
 			fmt.Fprintf(rv, "\t%s\n", otherFieldName)
 			fmt.Fprintf(rv, "\t\t%v\n", otherFieldValue)
+		}
+	}
+	// nested documents
+	if nested, ok := hit.Fields[NestedDocumentKey]; ok {
+		if list, ok := nested.([]*search.NestedDocumentMatch); ok {
+			fmt.Fprintf(rv, "\t%s (%d nested documents)\n", NestedDocumentKey, len(list))
+			for ni, nd := range list {
+				fmt.Fprintf(rv, "\t\tNested #%d:\n", ni+1)
+				for f, frags := range nd.Fragments {
+					fmt.Fprintf(rv, "\t\t\t%s\n", f)
+					for _, frag := range frags {
+						fmt.Fprintf(rv, "\t\t\t\t%s\n", frag)
+					}
+				}
+				for f, v := range nd.Fields {
+					if _, ok := nd.Fragments[f]; !ok {
+						fmt.Fprintf(rv, "\t\t\t%s\n", f)
+						fmt.Fprintf(rv, "\t\t\t\t%v\n", v)
+					}
+				}
+			}
 		}
 	}
 	if len(hit.DecodedSort) > 0 {
@@ -648,6 +685,9 @@ func (sr *SearchResult) Merge(other *SearchResult) {
 	sr.Status.Merge(other.Status)
 	sr.Hits = append(sr.Hits, other.Hits...)
 	sr.Total += other.Total
+	if other.TotalRelation == TotalRelationGte {
+		sr.TotalRelation = TotalRelationGte
+	}
 	sr.Cost += other.Cost
 	if other.MaxScore > sr.MaxScore {
 		sr.MaxScore = other.MaxScore
@@ -805,4 +845,23 @@ func ParseParams(r *SearchRequest, input []byte) (*RequestParams, error) {
 	}
 
 	return params, nil
+}
+
+// OptionalRawMessage is a wrapper around json.RawMessage that treats empty or `null` JSON as nil.
+type OptionalRawMessage json.RawMessage
+
+func (n *OptionalRawMessage) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		*n = nil
+		return nil
+	}
+	*n = slices.Clone(data)
+	return nil
+}
+
+func (n OptionalRawMessage) MarshalJSON() ([]byte, error) {
+	if len(n) == 0 {
+		return []byte("null"), nil
+	}
+	return n, nil
 }

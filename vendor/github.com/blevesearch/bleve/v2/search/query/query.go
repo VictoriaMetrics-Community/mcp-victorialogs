@@ -308,6 +308,20 @@ func ParseQuery(input []byte) (Query, error) {
 		}
 		return &rv, nil
 	}
+	_, hasCustomFilter := tmp["custom_filter"]
+	if hasCustomFilter {
+		if CustomFilterQueryParser == nil {
+			return nil, fmt.Errorf("custom filter query parser is not registered")
+		}
+		return CustomFilterQueryParser(input)
+	}
+	_, hasCustomScore := tmp["custom_score"]
+	if hasCustomScore {
+		if CustomScoreQueryParser == nil {
+			return nil, fmt.Errorf("custom score query parser is not registered")
+		}
+		return CustomScoreQueryParser(input)
+	}
 	_, hasDocIds := tmp["ids"]
 	if hasDocIds {
 		var rv DocIDQuery
@@ -358,6 +372,16 @@ func ParseQuery(input []byte) (Query, error) {
 	_, hasGeo := tmp["geometry"]
 	if hasGeo {
 		var rv GeoShapeQuery
+		err := util.UnmarshalJSON(input, &rv)
+		if err != nil {
+			return nil, err
+		}
+		return &rv, nil
+	}
+
+	_, hasGeo = tmp["geometry_v2"]
+	if hasGeo {
+		var rv GeoShapeV2Query
 		err := util.UnmarshalJSON(input, &rv)
 		if err != nil {
 			return nil, err
@@ -455,13 +479,10 @@ func DumpQuery(m mapping.IndexMapping, query Query) (string, error) {
 	return string(data), err
 }
 
-// FieldSet represents a set of queried fields.
-type FieldSet map[string]struct{}
-
 // ExtractFields returns a set of fields referenced by the query.
 // The returned set may be nil if the query does not explicitly reference any field
 // and the DefaultSearchField is unset in the index mapping.
-func ExtractFields(q Query, m mapping.IndexMapping, fs FieldSet) (FieldSet, error) {
+func ExtractFields(q Query, m mapping.IndexMapping, fs search.FieldSet) (search.FieldSet, error) {
 	if q == nil || m == nil {
 		return fs, nil
 	}
@@ -474,9 +495,9 @@ func ExtractFields(q Query, m mapping.IndexMapping, fs FieldSet) (FieldSet, erro
 		}
 		if f != "" {
 			if fs == nil {
-				fs = make(FieldSet)
+				fs = search.NewFieldSet()
 			}
-			fs[f] = struct{}{}
+			fs.AddField(f)
 		}
 	case *QueryStringQuery:
 		var expandedQuery Query
@@ -505,6 +526,11 @@ func ExtractFields(q Query, m mapping.IndexMapping, fs FieldSet) (FieldSet, erro
 				break
 			}
 		}
+	case *DocIDQuery, *MatchAllQuery:
+		if fs == nil {
+			fs = search.NewFieldSet()
+		}
+		fs.AddField("_id")
 	}
 	return fs, err
 }
