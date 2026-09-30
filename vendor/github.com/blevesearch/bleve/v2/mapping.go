@@ -34,6 +34,20 @@ func NewDocumentStaticMapping() *mapping.DocumentMapping {
 	return mapping.NewDocumentStaticMapping()
 }
 
+// NewNestedDocumentMapping returns a new document mapping
+// that will treat all objects as nested documents.
+func NewNestedDocumentMapping() *mapping.DocumentMapping {
+	return mapping.NewNestedDocumentMapping()
+}
+
+// NewNestedDocumentStaticMapping returns a new document mapping
+// that will treat all objects as nested documents and
+// will not automatically index parts of a nested document
+// without an explicit mapping.
+func NewNestedDocumentStaticMapping() *mapping.DocumentMapping {
+	return mapping.NewNestedDocumentStaticMapping()
+}
+
 // NewDocumentDisabledMapping returns a new document
 // mapping that will not perform any indexing.
 func NewDocumentDisabledMapping() *mapping.DocumentMapping {
@@ -72,6 +86,10 @@ func NewGeoPointFieldMapping() *mapping.FieldMapping {
 
 func NewGeoShapeFieldMapping() *mapping.FieldMapping {
 	return mapping.NewGeoShapeFieldMapping()
+}
+
+func NewGeoShapeV2FieldMapping() *mapping.FieldMapping {
+	return mapping.NewGeoShapeV2FieldMapping()
 }
 
 func NewIPFieldMapping() *mapping.FieldMapping {

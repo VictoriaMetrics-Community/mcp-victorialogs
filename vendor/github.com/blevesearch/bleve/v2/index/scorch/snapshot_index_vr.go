@@ -18,12 +18,12 @@
 package scorch
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
+	"sync/atomic"
 
 	"github.com/blevesearch/bleve/v2/size"
 	index "github.com/blevesearch/bleve_index_api"
@@ -96,7 +96,7 @@ func (i *IndexSnapshotVectorReader) Next(preAlloced *index.VectorDoc) (
 			// make segment number into global number by adding offset
 			globalOffset := i.snapshot.offsets[i.segmentOffset]
 			nnum := next.Number()
-			rv.ID = docNumberToBytes(rv.ID, nnum+globalOffset)
+			rv.ID = index.NewIndexInternalID(rv.ID, nnum+globalOffset)
 			rv.Score = float64(next.Score())
 
 			i.currID = rv.ID
@@ -113,7 +113,7 @@ func (i *IndexSnapshotVectorReader) Next(preAlloced *index.VectorDoc) (
 func (i *IndexSnapshotVectorReader) Advance(ID index.IndexInternalID,
 	preAlloced *index.VectorDoc) (*index.VectorDoc, error) {
 
-	if i.currPosting != nil && bytes.Compare(i.currID, ID) >= 0 {
+	if i.currPosting != nil && i.currID.Compare(ID) >= 0 {
 		i2, err := i.snapshot.VectorReader(i.ctx, i.vector, i.field, i.k,
 			i.searchParams, i.eligibleSelector)
 		if err != nil {
@@ -124,10 +124,7 @@ func (i *IndexSnapshotVectorReader) Advance(ID index.IndexInternalID,
 		*i = *(i2.(*IndexSnapshotVectorReader))
 	}
 
-	num, err := docInternalToNumber(ID)
-	if err != nil {
-		return nil, fmt.Errorf("error converting to doc number % x - %v", ID, err)
-	}
+	num := ID.Value()
 	segIndex, ldocNum := i.snapshot.segmentIndexAndLocalDocNumFromGlobal(num)
 	if segIndex >= len(i.snapshot.segment) {
 		return nil, fmt.Errorf("computed segment index %d out of bounds %d",
@@ -149,7 +146,7 @@ func (i *IndexSnapshotVectorReader) Advance(ID index.IndexInternalID,
 	if preAlloced == nil {
 		preAlloced = &index.VectorDoc{}
 	}
-	preAlloced.ID = docNumberToBytes(preAlloced.ID, next.Number()+
+	preAlloced.ID = index.NewIndexInternalID(preAlloced.ID, next.Number()+
 		i.snapshot.offsets[segIndex])
 	i.currID = preAlloced.ID
 	i.currPosting = next
@@ -165,7 +162,9 @@ func (i *IndexSnapshotVectorReader) Count() uint64 {
 }
 
 func (i *IndexSnapshotVectorReader) Close() error {
-	// TODO Consider if any scope of recycling here.
+	if i.snapshot != nil {
+		atomic.AddUint64(&i.snapshot.parent.stats.TotKNNSearches, 1)
+	}
 	return nil
 }
 
@@ -183,8 +182,7 @@ func (i *IndexSnapshot) CentroidCardinalities(field string, limit int, descendin
 
 	for _, segment := range i.segment {
 		if sv, ok := segment.segment.(segment_api.VectorSegment); ok {
-			vecIndex, err := sv.InterpretVectorIndex(field,
-				false /* does not require filtering */, segment.deleted)
+			vecIndex, err := sv.InterpretVectorIndex(field, segment.deleted)
 			if err != nil {
 				return nil, fmt.Errorf("failed to interpret vector index for field %s in segment: %v", field, err)
 			}

@@ -274,6 +274,24 @@ func (so SortOrder) Compare(cachedScoring, cachedDesc []bool, i, j *DocumentMatc
 	return -1
 }
 
+func CompareScoreDescending(i, j *DocumentMatch) int {
+	// first try to sort the two hits based on their score value
+	if i.Score < j.Score {
+		return 1
+	}
+	if i.Score > j.Score {
+		return -1
+	}
+	// tie-break on natural index order: earlier hit sorts first
+	if i.HitNumber > j.HitNumber {
+		return 1
+	}
+	if i.HitNumber < j.HitNumber {
+		return -1
+	}
+	return 0
+}
+
 func (so SortOrder) RequiresScore() bool {
 	for _, soi := range so {
 		if soi.RequiresScoring() {
@@ -683,29 +701,29 @@ type SortGeoDistance struct {
 	Field    string
 	Desc     bool
 	Unit     string
-	values   []string
+	values   [][]byte
 	Lon      float64
 	Lat      float64
 	unitMult float64
+	tmp      []byte
 }
 
 // UpdateVisitor notifies this sort field that in this document
 // this field has the specified term
 func (s *SortGeoDistance) UpdateVisitor(field string, term []byte) {
 	if field == s.Field {
-		s.values = append(s.values, string(term))
+		s.values = append(s.values, term)
 	}
 }
 
 // Value returns the sort value of the DocumentMatch
-// it also resets the state of this SortField for
+// it also resets the state of this SortGeoDistance for
 // processing the next document
 func (s *SortGeoDistance) Value(i *DocumentMatch) string {
-	iTerms := s.filterTermsByType(s.values)
-	iTerm := s.filterTermsByMode(iTerms)
+	iTerm := s.findPrefixCodedNumericTerm(s.values)
 	s.values = s.values[:0]
 
-	if iTerm == "" {
+	if iTerm == nil {
 		return maxDistance
 	}
 
@@ -723,7 +741,8 @@ func (s *SortGeoDistance) Value(i *DocumentMatch) string {
 		dist /= s.unitMult
 	}
 	distInt64 := numeric.Float64ToInt64(dist)
-	return string(numeric.MustNewPrefixCodedInt64(distInt64, 0))
+	s.tmp = numeric.MustNewPrefixCodedInt64Prealloc(distInt64, 0, s.tmp)
+	return string(s.tmp)
 }
 
 func (s *SortGeoDistance) DecodeValue(value string) string {
@@ -739,25 +758,16 @@ func (s *SortGeoDistance) Descending() bool {
 	return s.Desc
 }
 
-func (s *SortGeoDistance) filterTermsByMode(terms []string) string {
-	if len(terms) >= 1 {
-		return terms[0]
-	}
-
-	return ""
-}
-
-// filterTermsByType attempts to make one pass on the terms
-// return only valid prefix coded numbers with shift of 0
-func (s *SortGeoDistance) filterTermsByType(terms []string) []string {
-	var termsWithShiftZero []string
+// findPrefixCodedNumericTerm looks through the provided terms
+// and returns the first valid prefix coded numeric term with shift of 0
+func (s *SortGeoDistance) findPrefixCodedNumericTerm(terms [][]byte) []byte {
 	for _, term := range terms {
-		valid, shift := numeric.ValidPrefixCodedTerm(term)
+		valid, shift := numeric.ValidPrefixCodedTermBytes(term)
 		if valid && shift == 0 {
-			termsWithShiftZero = append(termsWithShiftZero, term)
+			return term
 		}
 	}
-	return termsWithShiftZero
+	return nil
 }
 
 // RequiresDocID says this SearchSort does not require the DocID be loaded

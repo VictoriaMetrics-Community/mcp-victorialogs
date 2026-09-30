@@ -38,6 +38,7 @@ func init() {
 type unadornedPostingsIteratorBitmap struct {
 	actual   roaring.IntPeekable
 	actualBM *roaring.Bitmap
+	next     UnadornedPosting // reused across Next() calls
 }
 
 func (i *unadornedPostingsIteratorBitmap) Next() (segment.Posting, error) {
@@ -53,7 +54,10 @@ func (i *unadornedPostingsIteratorBitmap) nextAtOrAfter(atOrAfter uint64) (segme
 	if !exists {
 		return nil, nil
 	}
-	return UnadornedPosting(docNum), nil
+	i.next = UnadornedPosting{} // clear the struct
+	rv := &i.next
+	rv.docNum = docNum
+	return rv, nil
 }
 
 func (i *unadornedPostingsIteratorBitmap) nextDocNumAtOrAfter(atOrAfter uint64) (uint64, bool) {
@@ -112,8 +116,9 @@ func newUnadornedPostingsIteratorFromBitmap(bm *roaring.Bitmap) segment.Postings
 const docNum1HitFinished = math.MaxUint64
 
 type unadornedPostingsIterator1Hit struct {
-	docNumOrig uint64 // original 1-hit docNum used to create this iterator
-	docNum     uint64 // current docNum
+	docNumOrig uint64           // original 1-hit docNum used to create this iterator
+	docNum     uint64           // current docNum
+	next       UnadornedPosting // reused across Next() calls
 }
 
 func (i *unadornedPostingsIterator1Hit) Next() (segment.Posting, error) {
@@ -129,7 +134,10 @@ func (i *unadornedPostingsIterator1Hit) nextAtOrAfter(atOrAfter uint64) (segment
 	if !exists {
 		return nil, nil
 	}
-	return UnadornedPosting(docNum), nil
+	i.next = UnadornedPosting{} // clear the struct
+	rv := &i.next
+	rv.docNum = docNum
+	return rv, nil
 }
 
 func (i *unadornedPostingsIterator1Hit) nextDocNumAtOrAfter(atOrAfter uint64) (uint64, bool) {
@@ -160,6 +168,16 @@ func (i *unadornedPostingsIterator1Hit) BytesWritten() uint64 {
 
 func (i *unadornedPostingsIterator1Hit) ResetBytesRead(uint64) {}
 
+func (i *unadornedPostingsIterator1Hit) ActualBitmap() *roaring.Bitmap { return nil }
+
+func (i *unadornedPostingsIterator1Hit) DocNum1Hit() (uint64, bool) {
+	return i.docNumOrig, true
+}
+
+// ReplaceActual is a no-op: a 1-hit iterator has no actual bitmap, and callers
+// only invoke ReplaceActual on iterators whose ActualBitmap is non-nil.
+func (i *unadornedPostingsIterator1Hit) ReplaceActual(*roaring.Bitmap) {}
+
 // ResetIterator resets the iterator to the original state.
 func (i *unadornedPostingsIterator1Hit) ResetIterator() {
 	i.docNum = i.docNumOrig
@@ -176,24 +194,26 @@ type ResetablePostingsIterator interface {
 	ResetIterator()
 }
 
-type UnadornedPosting uint64
-
-func (p UnadornedPosting) Number() uint64 {
-	return uint64(p)
+type UnadornedPosting struct {
+	docNum uint64
 }
 
-func (p UnadornedPosting) Frequency() uint64 {
+func (p *UnadornedPosting) Number() uint64 {
+	return p.docNum
+}
+
+func (p *UnadornedPosting) Frequency() uint64 {
 	return 0
 }
 
-func (p UnadornedPosting) Norm() float64 {
+func (p *UnadornedPosting) Norm() float64 {
 	return 0
 }
 
-func (p UnadornedPosting) Locations() []segment.Location {
+func (p *UnadornedPosting) Locations() []segment.Location {
 	return nil
 }
 
-func (p UnadornedPosting) Size() int {
+func (p *UnadornedPosting) Size() int {
 	return reflectStaticSizeUnadornedPosting
 }

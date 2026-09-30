@@ -17,7 +17,6 @@ package scorch
 import (
 	"container/heap"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,11 +27,13 @@ import (
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/blevesearch/bleve/v2/document"
+	geov2 "github.com/blevesearch/bleve/v2/geov2"
+	"github.com/blevesearch/bleve/v2/size"
+	"github.com/blevesearch/bleve/v2/util"
 	index "github.com/blevesearch/bleve_index_api"
 	segment "github.com/blevesearch/scorch_segment_api/v2"
 	"github.com/blevesearch/vellum"
 	lev "github.com/blevesearch/vellum/levenshtein"
-	bolt "go.etcd.io/bbolt"
 )
 
 // re usable, threadsafe levenshtein builders
@@ -42,9 +43,8 @@ type asynchSegmentResult struct {
 	dict    segment.TermDictionary
 	dictItr segment.DictionaryIterator
 
-	cardinality int
-	index       int
-	docs        *roaring.Bitmap
+	index int
+	docs  *roaring.Bitmap
 
 	thesItr segment.ThesaurusIterator
 
@@ -52,6 +52,8 @@ type asynchSegmentResult struct {
 }
 
 var reflectStaticSizeIndexSnapshot int
+var reflectStaticSizeIndexSnapshotGeoShapeV2Reader int
+var reflectStaticSizeRoaringIntIterator int
 
 func init() {
 	var is interface{} = IndexSnapshot{}
@@ -59,12 +61,16 @@ func init() {
 	var err error
 	lb1, err = lev.NewLevenshteinAutomatonBuilder(1, true)
 	if err != nil {
-		panic(fmt.Errorf("Levenshtein automaton ed1 builder err: %v", err))
+		panic(fmt.Errorf("levenshtein automaton ed1 builder err: %v", err))
 	}
 	lb2, err = lev.NewLevenshteinAutomatonBuilder(2, true)
 	if err != nil {
-		panic(fmt.Errorf("Levenshtein automaton ed2 builder err: %v", err))
+		panic(fmt.Errorf("levenshtein automaton ed2 builder err: %v", err))
 	}
+	var gcr IndexSnapshotGeoShapeV2Reader
+	reflectStaticSizeIndexSnapshotGeoShapeV2Reader = int(reflect.TypeOf(gcr).Size())
+	var rip roaring.IntIterator
+	reflectStaticSizeRoaringIntIterator = int(reflect.TypeOf(rip).Size())
 }
 
 type IndexSnapshot struct {
@@ -91,6 +97,8 @@ type IndexSnapshot struct {
 	// UpdateFieldInfo.Index or .Store or .DocValues).
 	// Used to short circuit queries trying to read stale data
 	updatedFields map[string]*index.UpdateFieldInfo
+
+	fileWriterID string // the file callback writer id associated with this snapshot
 }
 
 func (i *IndexSnapshot) Segments() []*SegmentSnapshot {
@@ -329,8 +337,9 @@ func (is *IndexSnapshot) fieldDictRegexp(field string,
 		return nil, nil, err
 	}
 
-	fd, err := is.newIndexSnapshotFieldDict(field, func(is segment.TermDictionary) segment.DictionaryIterator {
-		return is.AutomatonIterator(a, prefixBeg, prefixEnd)
+	fd, err := is.newIndexSnapshotFieldDict(field, func(dict segment.TermDictionary) segment.DictionaryIterator {
+		// regexp/wildcard candidate collection discards DictEntry.Count.
+		return automatonIteratorOmitCount(dict, a, prefixBeg, prefixEnd)
 	}, false)
 	if err != nil {
 		return nil, nil, err
@@ -379,8 +388,9 @@ func (is *IndexSnapshot) fieldDictFuzzy(field string,
 		prefixBeg = []byte(prefix)
 		prefixEnd = calculateExclusiveEndFromPrefix(prefixBeg)
 	}
-	fd, err := is.newIndexSnapshotFieldDict(field, func(is segment.TermDictionary) segment.DictionaryIterator {
-		return is.AutomatonIterator(a, prefixBeg, prefixEnd)
+	fd, err := is.newIndexSnapshotFieldDict(field, func(dict segment.TermDictionary) segment.DictionaryIterator {
+		// fuzzy candidate collection discards DictEntry.Count.
+		return automatonIteratorOmitCount(dict, a, prefixBeg, prefixEnd)
 	}, false)
 	if err != nil {
 		return nil, nil, err
@@ -468,13 +478,17 @@ func (is *IndexSnapshot) Fields() ([]string, error) {
 }
 
 func (is *IndexSnapshot) GetInternal(key []byte) ([]byte, error) {
+	_, ok := is.internal[string(key)]
+	if !ok {
+		return is.parent.getInternal(key)
+	}
 	return is.internal[string(key)], nil
 }
 
 func (is *IndexSnapshot) DocCount() (uint64, error) {
 	var rv uint64
 	for _, segment := range is.segment {
-		rv += segment.Count()
+		rv += segment.CountRoot()
 	}
 	return rv, nil
 }
@@ -501,10 +515,7 @@ func (is *IndexSnapshot) Document(id string) (rv index.Document, err error) {
 		return nil, nil
 	}
 
-	docNum, err := docInternalToNumber(next.ID)
-	if err != nil {
-		return nil, err
-	}
+	docNum := next.ID.Value()
 	segmentIndex, localDocNum := is.segmentIndexAndLocalDocNumFromGlobal(docNum)
 
 	rvd := document.NewDocument(id)
@@ -571,10 +582,7 @@ func (is *IndexSnapshot) segmentIndexAndLocalDocNumFromGlobal(docNum uint64) (in
 }
 
 func (is *IndexSnapshot) ExternalID(id index.IndexInternalID) (string, error) {
-	docNum, err := docInternalToNumber(id)
-	if err != nil {
-		return "", err
-	}
+	docNum := id.Value()
 	segmentIndex, localDocNum := is.segmentIndexAndLocalDocNumFromGlobal(docNum)
 
 	v, err := is.segment[segmentIndex].DocID(localDocNum)
@@ -589,10 +597,7 @@ func (is *IndexSnapshot) ExternalID(id index.IndexInternalID) (string, error) {
 }
 
 func (is *IndexSnapshot) segmentIndexAndLocalDocNum(id index.IndexInternalID) (int, uint64, error) {
-	docNum, err := docInternalToNumber(id)
-	if err != nil {
-		return 0, 0, err
-	}
+	docNum := id.Value()
 	segIdx, localDocNum := is.segmentIndexAndLocalDocNumFromGlobal(docNum)
 	return segIdx, localDocNum, nil
 }
@@ -700,6 +705,8 @@ func (is *IndexSnapshot) TermFieldReader(ctx context.Context, term []byte, field
 			rv.incrementBytesRead(bytesRead - prevBytesReadItr)
 		}
 	}
+	// ONLY update the bytes read value beyond this point for this TFR if scoring is enabled
+	rv.updateBytesRead = rv.includeFreq || rv.includeNorm || rv.includeTermVectors
 	atomic.AddUint64(&is.parent.stats.TotTermSearchersStarted, uint64(1))
 	return rv, nil
 }
@@ -776,25 +783,6 @@ func (is *IndexSnapshot) recycleTermFieldReader(tfr *IndexSnapshotTermFieldReade
 	is.m2.Unlock()
 }
 
-func docNumberToBytes(buf []byte, in uint64) []byte {
-	if len(buf) != 8 {
-		if cap(buf) >= 8 {
-			buf = buf[0:8]
-		} else {
-			buf = make([]byte, 8)
-		}
-	}
-	binary.BigEndian.PutUint64(buf, in)
-	return buf
-}
-
-func docInternalToNumber(in index.IndexInternalID) (uint64, error) {
-	if len(in) != 8 {
-		return 0, fmt.Errorf("wrong len for IndexInternalID: %q", in)
-	}
-	return binary.BigEndian.Uint64(in), nil
-}
-
 func (is *IndexSnapshot) documentVisitFieldTermsOnSegment(
 	segmentIndex int, localDocNum uint64, fields []string, cFields []string,
 	visitor index.DocValueVisitor, dvs segment.DocVisitState) (
@@ -813,8 +801,8 @@ func (is *IndexSnapshot) documentVisitFieldTermsOnSegment(
 	}
 
 	// Filter out fields that have been completely deleted or had their
-	// docvalues data deleted from both visitable fields and required fields
-	filterUpdatedFields := func(fields []string) []string {
+	// docvalues data deleted from the visitable fields
+	filterUpdatedDVFields := func(fields []string) []string {
 		filteredFields := make([]string, 0, len(fields))
 		for _, field := range fields {
 			if info, ok := is.updatedFields[field]; ok &&
@@ -826,8 +814,23 @@ func (is *IndexSnapshot) documentVisitFieldTermsOnSegment(
 		return filteredFields
 	}
 
-	fieldsFiltered := filterUpdatedFields(fields)
-	vFieldsFiltered := filterUpdatedFields(vFields)
+	// Filter out fields that have been completely deleted or had their
+	// index data deleted from the cached fields
+	filterUpdatedIndexFields := func(fields []string) []string {
+		filteredFields := make([]string, 0, len(fields))
+		for _, field := range fields {
+			if info, ok := is.updatedFields[field]; ok &&
+				(info.Index || info.Deleted) {
+				continue
+			}
+			filteredFields = append(filteredFields, field)
+		}
+		return filteredFields
+	}
+
+	if len(is.updatedFields) > 0 {
+		vFields = filterUpdatedDVFields(vFields)
+	}
 
 	var errCh chan error
 
@@ -836,23 +839,26 @@ func (is *IndexSnapshot) documentVisitFieldTermsOnSegment(
 	// if the caller happens to know we're on the same segmentIndex
 	// from a previous invocation
 	if cFields == nil {
-		cFields = subtractStrings(fieldsFiltered, vFieldsFiltered)
-
-		if !ss.cachedDocs.hasFields(cFields) {
-			errCh = make(chan error, 1)
-
-			go func() {
-				err := ss.cachedDocs.prepareFields(cFields, ss)
-				if err != nil {
-					errCh <- err
-				}
-				close(errCh)
-			}()
-		}
+		cFields = subtractStrings(fields, vFields)
+	}
+	if len(is.updatedFields) > 0 {
+		cFields = filterUpdatedIndexFields(cFields)
 	}
 
-	if ssvOk && ssv != nil && len(vFieldsFiltered) > 0 {
-		dvs, err = ssv.VisitDocValues(localDocNum, fieldsFiltered, visitor, dvs)
+	if len(cFields) > 0 && !ss.cachedDocs.hasFields(cFields) {
+		errCh = make(chan error, 1)
+
+		go func() {
+			err := ss.cachedDocs.prepareFields(cFields, ss)
+			if err != nil {
+				errCh <- err
+			}
+			close(errCh)
+		}()
+	}
+
+	if ssvOk && ssv != nil && len(vFields) > 0 {
+		dvs, err = ssv.VisitDocValues(localDocNum, fields, visitor, dvs)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -897,10 +903,7 @@ func (dvr *DocValueReader) BytesRead() uint64 {
 func (dvr *DocValueReader) VisitDocValues(id index.IndexInternalID,
 	visitor index.DocValueVisitor,
 ) (err error) {
-	docNum, err := docInternalToNumber(id)
-	if err != nil {
-		return err
-	}
+	docNum := id.Value()
 
 	segmentIndex, localDocNum := dvr.i.segmentIndexAndLocalDocNumFromGlobal(docNum)
 	if segmentIndex >= len(dvr.i.segment) {
@@ -980,17 +983,15 @@ func subtractStrings(a, b []string) []string {
 		return a
 	}
 
-	// Create a map for O(1) lookups
-	bMap := make(map[string]struct{}, len(b))
-	for _, bs := range b {
-		bMap[bs] = struct{}{}
-	}
-
 	rv := make([]string, 0, len(a))
+OUTER:
 	for _, as := range a {
-		if _, exists := bMap[as]; !exists {
-			rv = append(rv, as)
+		for _, bs := range b {
+			if as == bs {
+				continue OUTER
+			}
 		}
+		rv = append(rv, as)
 	}
 	return rv
 }
@@ -1006,7 +1007,7 @@ func (is *IndexSnapshot) CopyTo(d index.Directory) error {
 		return fmt.Errorf("invalid root.bolt file found")
 	}
 
-	copyBolt, err := bolt.Open(rootFile.Name(), 0o600, nil)
+	copyBolt, err := util.OpenBolt(rootFile.Name(), 0o600, nil)
 	if err != nil {
 		return err
 	}
@@ -1023,7 +1024,7 @@ func (is *IndexSnapshot) CopyTo(d index.Directory) error {
 		return err
 	}
 
-	_, _, err = prepareBoltSnapshot(is, tx, "", is.parent.segPlugin, nil, d)
+	_, _, err = prepareBoltSnapshot(is, tx, "", is.parent.segPlugin, d)
 	if err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("error backing up index snapshot: %v", err)
@@ -1296,4 +1297,208 @@ func (is *IndexSnapshot) TermFrequencies(field string, limit int, descending boo
 	}
 
 	return termFreqs[:limit], nil
+}
+
+// Ancestors returns the ancestor IDs for the given document ID. The prealloc
+// slice can be provided to avoid allocations downstream, and MUST be empty.
+func (i *IndexSnapshot) Ancestors(ID index.IndexInternalID, prealloc []index.AncestorID) ([]index.AncestorID, error) {
+	// get segment and local doc num for the ID
+	seg, ldoc, err := i.segmentIndexAndLocalDocNum(ID)
+	if err != nil {
+		return nil, err
+	}
+	// get ancestors from the segment
+	prealloc = i.segment[seg].Ancestors(ldoc, prealloc)
+	// get global offset for the segment (correcting factor for multi-segment indexes)
+	globalOffset := i.offsets[seg]
+	// adjust ancestors to global doc numbers, not local to segment
+	for idx := range prealloc {
+		prealloc[idx] = prealloc[idx].Add(globalOffset)
+	}
+	// return adjusted ancestors
+	return prealloc, nil
+}
+
+func (i *IndexSnapshot) GeoShapeV2FieldReader(ctx context.Context, field string) (
+	index.GeoShapeV2FieldReader, error) {
+
+	rv := &IndexSnapshotGeoShapeV2Reader{
+		field:     field,
+		postings:  make([]*roaring.Bitmap, len(i.segment)),
+		iterators: make([]roaring.IntPeekable, len(i.segment)),
+		snapshot:  i,
+	}
+
+	return rv, nil
+}
+
+type IndexSnapshotGeoShapeV2Reader struct {
+	field string
+
+	postings      []*roaring.Bitmap
+	iterators     []roaring.IntPeekable
+	segmentOffset int
+
+	snapshot *IndexSnapshot
+}
+
+// Search performs a spatial search for the given GeoJSON shape and relation
+// across all segments in the index snapshot.
+func (g *IndexSnapshotGeoShapeV2Reader) Search(shape index.GeoJSON,
+	relation string) error {
+
+	numSegments := len(g.snapshot.segment)
+	// create a single query object that is thread safe
+	// to be used across all segments
+	query := geov2.NewQuery(shape, relation)
+
+	var wg sync.WaitGroup
+	wg.Add(numSegments)
+
+	var errm sync.Mutex
+	var err error
+	// search each segment concurrently
+	for i := 0; i < numSegments; i++ {
+		go func(segID int) {
+			defer wg.Done()
+			err2 := g.searchSeg(segID, query)
+			if err2 != nil {
+				errm.Lock()
+				if err == nil {
+					err = err2
+				}
+				errm.Unlock()
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	return err
+}
+
+// searchSeg performs a spatial search for the given GeoJSON shape and relation
+// on a single segment in the index snapshot.
+func (g *IndexSnapshotGeoShapeV2Reader) searchSeg(segID int,
+	query geov2.Query) error {
+
+	snapshot := g.snapshot.segment[segID]
+	geoSeg, ok := snapshot.segment.(segment.GeoShapeV2Segment)
+	if !ok {
+		return nil
+	}
+
+	// obtain the geo shape data from the segment
+	geoData, err := geoSeg.GeoShapeV2Data(g.field, snapshot.deleted)
+	if err != nil {
+		return err
+	}
+	// return if segment does not have any geo shape data for the field
+	if geoData == nil {
+		return nil
+	}
+	// release the reference on the segment's cached geo data once the
+	// evaluation is done, so that the cache is free to evict it
+	defer geoData.Close()
+
+	// evaluate the query against the geo shape data to
+	// get the matching document IDs
+	hits := query.Evaluate(geoData)
+	postings := roaring.New()
+
+	docNums := geoData.DocNums()
+
+	addFunc := func(docNumInternal int) {
+		postings.Add(docNums[docNumInternal])
+	}
+
+	hits.Iterate(addFunc)
+
+	g.postings[segID] = postings
+	g.iterators[segID] = postings.Iterator()
+
+	return nil
+}
+
+// Next returns the next GeoShapeV2FieldDoc from the postings list across all segments in the index snapshot.
+func (g *IndexSnapshotGeoShapeV2Reader) Next(preAlloced *index.GeoShapeV2FieldDoc) (
+	*index.GeoShapeV2FieldDoc, error) {
+	rv := preAlloced
+	if rv == nil {
+		rv = &index.GeoShapeV2FieldDoc{}
+	}
+
+	for g.segmentOffset < len(g.iterators) {
+		if !g.iterators[g.segmentOffset].HasNext() {
+			g.segmentOffset++
+			continue
+		}
+
+		next := g.iterators[g.segmentOffset].Next()
+		globalOffset := g.snapshot.offsets[g.segmentOffset]
+		rv.ID = index.NewIndexInternalID(rv.ID, uint64(next)+globalOffset)
+		return rv, nil
+	}
+
+	return nil, nil
+}
+
+// Advance moves the reader to the specified document ID, returning the corresponding GeoShapeV2FieldDoc if it exists.
+func (g *IndexSnapshotGeoShapeV2Reader) Advance(ID index.IndexInternalID,
+	preAlloced *index.GeoShapeV2FieldDoc) (*index.GeoShapeV2FieldDoc, error) {
+	rv := preAlloced
+	if rv == nil {
+		rv = &index.GeoShapeV2FieldDoc{}
+	}
+
+	num := ID.Value()
+
+	segIdx, localDocNum := g.snapshot.segmentIndexAndLocalDocNumFromGlobal(num)
+	if segIdx >= len(g.iterators) {
+		return nil, fmt.Errorf("error advancing to doc number %d, segment "+
+			"index %d out of bounds", num, segIdx)
+	}
+
+	if g.segmentOffset > segIdx {
+		return nil, fmt.Errorf("error advancing to doc number %d, segment "+
+			"index %d is less than current segment offset %d", num, segIdx, g.segmentOffset)
+	}
+
+	g.segmentOffset = segIdx
+	g.iterators[g.segmentOffset].AdvanceIfNeeded(uint32(localDocNum))
+
+	return g.Next(rv)
+}
+
+// Close is a no-op: the reader holds no resources of its own, and the
+// segment-level geo data it reads from is owned and evicted by the
+// segment's cache
+func (g *IndexSnapshotGeoShapeV2Reader) Close() error {
+	return nil
+}
+
+// Count returns the total number of documents across all segments
+// in the index snapshot that match the GeoShapeV2FieldReader's criteria.
+func (g *IndexSnapshotGeoShapeV2Reader) Count() uint64 {
+	var rv uint64
+	for _, posting := range g.postings {
+		if posting != nil {
+			rv += uint64(posting.GetCardinality())
+		}
+	}
+	return rv
+}
+
+// Size returns the estimated size in bytes of the
+// IndexSnapshotGeoShapeV2Reader, including its postings and iterators.
+func (g *IndexSnapshotGeoShapeV2Reader) Size() int {
+	rv := reflectStaticSizeIndexSnapshotGeoShapeV2Reader + size.SizeOfPtr +
+		len(g.field) + size.SizeOfInt
+
+	for _, posting := range g.postings {
+		rv += int(posting.GetSizeInBytes())
+	}
+
+	rv += (reflectStaticSizeRoaringIntIterator + size.SizeOfPtr) * len(g.iterators)
+
+	return rv
 }
