@@ -23,6 +23,15 @@ type filterLeField struct {
 	prefixFilterOnce sync.Once
 }
 
+func newFilterLeField(fieldName, otherFieldName string, excludeEqualValues bool) *filterLeField {
+	return &filterLeField{
+		fieldName:      getCanonicalColumnName(fieldName),
+		otherFieldName: getCanonicalColumnName(otherFieldName),
+
+		excludeEqualValues: excludeEqualValues,
+	}
+}
+
 func (fe *filterLeField) String() string {
 	funcName := "le_field"
 	if fe.excludeEqualValues {
@@ -193,7 +202,7 @@ func (fe *filterLeField) applyToBlockSearch(bs *blockSearch, bm *bitmap) {
 	}
 
 	if ch.valueType != chOther.valueType {
-		// Slow path - c and cOther have different valueType, so convert them to string values and compare them
+		// Slow path - ch and chOther have different valueType, so convert them to string values and compare them
 		fe.applyFilterString(bs, bm)
 		return
 	}

@@ -334,7 +334,7 @@ func (shard *pipeTopkProcessorShard) getRowsByPartition(partition string) *pipeT
 		}
 		partition = strings.Clone(partition)
 		shard.rowsByPartition[partition] = rs
-		shard.stateSizeBudget += int(unsafe.Sizeof(*rs)+unsafe.Sizeof(rs)) + len(partition)
+		shard.stateSizeBudget -= int(unsafe.Sizeof(*rs)+unsafe.Sizeof(rs)) + len(partition)
 	}
 	return rs
 }
@@ -679,7 +679,7 @@ func topkLess(ps *pipeSort, a, b *pipeTopkRow) bool {
 			bb.B = marshalTimestampRFC3339NanoString(bb.B[:0], a.timestamp)
 			vA = bytesutil.ToUnsafeString(bb.B)
 		} else if isTimeB[i] {
-			bb.B = marshalTimestampRFC3339NanoString(bb.B[:0], a.timestamp)
+			bb.B = marshalTimestampRFC3339NanoString(bb.B[:0], b.timestamp)
 			vB = bytesutil.ToUnsafeString(bb.B)
 		}
 

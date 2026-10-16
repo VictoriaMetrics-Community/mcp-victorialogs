@@ -22,6 +22,21 @@ type filter interface {
 	applyToBlockResult(br *blockResult, bm *bitmap)
 }
 
+// fieldFilter must implement filtering for log entries by the given fieldName
+type fieldFilter interface {
+	// String returns string representation of the filter
+	String() string
+
+	// matchRowByField must return true if the current filter for the given fieldName matches a row with the given fields
+	matchRowByField(fields []Field, fieldName string) bool
+
+	// applyToBlockSearchByField must update bm according to the filter for the given fieldName applied to the given bs block
+	applyToBlockSearchByField(bs *blockSearch, bm *bitmap, fieldName string)
+
+	// applyToBlockResultByField must update bm according to the filter for the given fieldName applied to the given br block
+	applyToBlockResultByField(br *blockResult, bm *bitmap, fieldName string)
+}
+
 // visitFilterRecursive recursively calls visitFunc for filters inside f.
 //
 // It stops calling visitFunc on the remaining filters as soon as visitFunc returns true.
@@ -82,34 +97,28 @@ func copyFilterInternal(f filter, visitFunc func(f filter) bool, copyFunc func(f
 		if err != nil {
 			return nil, err
 		}
-		fa := &filterAnd{
-			filters: filters,
-		}
+		fa := newFilterAnd(filters)
 		return fa, nil
 	case *filterOr:
 		filters, err := copyFilters(t.filters, visitFunc, copyFunc)
 		if err != nil {
 			return nil, err
 		}
-		fo := &filterOr{
-			filters: filters,
-		}
+		fo := newFilterOr(filters)
 		return fo, nil
 	case *filterNot:
 		f, err := copyFilter(t.f, visitFunc, copyFunc)
 		if err != nil {
 			return nil, err
 		}
-		fn := &filterNot{
-			f: f,
-		}
+		fn := newFilterNot(f)
 		return fn, nil
 	default:
 		return f, nil
 	}
 }
 
-// copyFilters recursively copies filters with the help of copyfunc if visitFunc returns true for them.
+// copyFilters recursively copies filters with the help of copyFunc if visitFunc returns true for them.
 //
 // It doesn't copy other filters by returning them as is.
 func copyFilters(filters []filter, visitFunc func(f filter) bool, copyFunc func(f filter) (filter, error)) ([]filter, error) {

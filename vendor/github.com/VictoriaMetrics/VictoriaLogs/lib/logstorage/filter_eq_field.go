@@ -20,6 +20,13 @@ type filterEqField struct {
 	prefixFilterOnce sync.Once
 }
 
+func newFilterEqField(fieldName, otherFieldName string) *filterEqField {
+	return &filterEqField{
+		fieldName:      getCanonicalColumnName(fieldName),
+		otherFieldName: getCanonicalColumnName(otherFieldName),
+	}
+}
+
 func (fe *filterEqField) String() string {
 	return fmt.Sprintf("%seq_field(%s)", quoteFieldNameIfNeeded(fe.fieldName), quoteTokenIfNeeded(fe.otherFieldName))
 }
@@ -154,7 +161,7 @@ func (fe *filterEqField) applyToBlockSearch(bs *blockSearch, bm *bitmap) {
 	}
 
 	if ch.valueType != chOther.valueType {
-		// Slow path - c and cOther have different valueType, so convert them to string values and compare them
+		// Slow path - ch and chOther have different valueType, so convert them to string values and compare them
 		fe.applyFilterString(bs, bm)
 		return
 	}

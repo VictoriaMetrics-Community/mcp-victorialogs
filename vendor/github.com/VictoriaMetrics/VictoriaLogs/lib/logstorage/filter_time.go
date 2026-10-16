@@ -10,7 +10,7 @@ import (
 //
 // It is expressed as `_time:[start, end]` in LogsQL.
 type filterTime struct {
-	// mintimestamp is the minimum timestamp in nanoseconds to find
+	// minTimestamp is the minimum timestamp in nanoseconds to find
 	minTimestamp int64
 
 	// maxTimestamp is the maximum timestamp in nanoseconds to find
@@ -18,6 +18,15 @@ type filterTime struct {
 
 	// stringRepr is string representation of the filter
 	stringRepr string
+}
+
+func newFilterTime(minTimestamp, maxTimestamp int64, stringRepr string) *filterTime {
+	return &filterTime{
+		minTimestamp: minTimestamp,
+		maxTimestamp: maxTimestamp,
+
+		stringRepr: stringRepr,
+	}
 }
 
 func (ft *filterTime) String() string {

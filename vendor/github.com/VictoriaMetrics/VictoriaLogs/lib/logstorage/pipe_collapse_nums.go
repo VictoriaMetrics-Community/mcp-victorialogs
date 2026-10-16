@@ -46,7 +46,7 @@ func (pc *pipeCollapseNums) canLiveTail() bool {
 }
 
 func (pc *pipeCollapseNums) canReturnLastNResults() bool {
-	return true
+	return pc.field != "_time"
 }
 
 func (pc *pipeCollapseNums) isFixedOutputFieldsOrder() bool {
@@ -65,8 +65,8 @@ func (pc *pipeCollapseNums) visitSubqueries(visitFunc func(q *Query)) {
 	pc.iff.visitSubqueries(visitFunc)
 }
 
-func (pc *pipeCollapseNums) initFilterInValues(cache *inValuesCache, getFieldValuesFunc getFieldValuesFunc, keepSubquery bool) (pipe, error) {
-	iffNew, err := pc.iff.initFilterInValues(cache, getFieldValuesFunc, keepSubquery)
+func (pc *pipeCollapseNums) initFilterInValues(cache *inValuesCache, getFieldValues getFieldValuesFunc) (pipe, error) {
+	iffNew, err := pc.iff.initFilterInValues(cache, getFieldValues)
 	if err != nil {
 		return nil, err
 	}
