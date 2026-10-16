@@ -1,0 +1,30 @@
+package timerpool
+
+import (
+	"sync"
+	"time"
+)
+
+// Get returns a timer for the given duration d from the pool.
+//
+// Return back the timer to the pool with Put.
+func Get(d time.Duration) *time.Timer {
+	if v := timerPool.Get(); v != nil {
+		t := v.(*time.Timer)
+		// any receive from t.C after Reset has returned is guaranteed not
+		// to receive a time value corresponding to the previous timer settings
+		t.Reset(d)
+		return t
+	}
+	return time.NewTimer(d)
+}
+
+// Put returns t to the pool.
+//
+// t cannot be accessed after returning to the pool.
+func Put(t *time.Timer) {
+	t.Stop()
+	timerPool.Put(t)
+}
+
+var timerPool sync.Pool

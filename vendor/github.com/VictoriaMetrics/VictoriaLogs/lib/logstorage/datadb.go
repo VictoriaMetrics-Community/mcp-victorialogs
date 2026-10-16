@@ -539,16 +539,19 @@ func (ddb *datadb) mustMergePartsInternal(pws []*partWrapper, isFinal bool, drop
 		// Fast path: flush a single in-memory part to disk.
 		mp := pws[0].mp
 		mp.MustStoreToDisk(dstPartPath)
+		srcRowsCount := mp.ph.RowsCount
+		dstSize := mp.ph.CompressedSizeBytes
+
 		pwNew := ddb.openCreatedPart(&mp.ph, pws, nil, dstPartPath)
 		ddb.swapSrcWithDstParts(pws, pwNew, dstPartType)
-		ddb.updateMergeMetrics(dstPartType, mp.ph.RowsCount, startTime, mp.ph.CompressedSizeBytes)
+		ddb.updateMergeMetrics(dstPartType, srcRowsCount, startTime, dstSize)
 		return true
 	}
 
 	// Prepare blockStreamReaders for source parts.
 	bsrs := mustOpenBlockStreamReaders(pws)
 
-	// Prepare BlockStreamWriter for destination part.
+	// Prepare blockStreamWriter for destination part.
 	srcSize := uint64(0)
 	srcRowsCount := uint64(0)
 	srcBlocksCount := uint64(0)
@@ -590,8 +593,10 @@ func (ddb *datadb) mustMergePartsInternal(pws []*partWrapper, isFinal bool, drop
 	}
 	if needStop(stopCh) {
 		// Remove incomplete destination part
-		if dstPartType != partInmemory {
+		if mpNew == nil {
 			fs.MustRemoveDir(dstPartPath)
+		} else {
+			putInmemoryPart(mpNew)
 		}
 		return false
 	}
@@ -686,6 +691,8 @@ func (ddb *datadb) openCreatedPart(ph *partHeader, pws []*partWrapper, mpNew *in
 		// The created part is empty. Remove it
 		if mpNew == nil {
 			fs.MustRemoveDir(dstPartPath)
+		} else {
+			putInmemoryPart(mpNew)
 		}
 		return nil
 	}
@@ -918,7 +925,7 @@ func (ddb *datadb) updateStats(s *DatadbStats) {
 	s.ActiveBigMerges += uint64(ddb.bigPartActiveMerges.Load())
 	s.BigRowsMerged += ddb.bigPartMergeRowsTotal.Load()
 
-	s.PendingRows = ddb.rb.Len()
+	s.PendingRows += ddb.rb.Len()
 
 	ddb.partsLock.Lock()
 
@@ -945,7 +952,7 @@ func (ddb *datadb) updateStats(s *DatadbStats) {
 	ddb.partsLock.Unlock()
 }
 
-// getMinMaxTimestampsFast returns min and max timestamps across parts in ddb.
+// getMinMaxTimestamps returns min and max timestamps across parts in ddb.
 func (ddb *datadb) getMinMaxTimestamps() (int64, int64) {
 	minTs := int64(math.MaxInt64)
 	maxTs := int64(math.MinInt64)
@@ -1355,8 +1362,7 @@ func mustRemoveUnusedDirs(path string, partNames []string) {
 	}
 }
 
-// appendPartsToMerge finds optimal parts to merge from src,
-// appends them to dst and returns the result.
+// appendPartsToMerge finds optimal parts to merge from src, appends them to dst and returns the result.
 func appendPartsToMerge(dst, src []*partWrapper, maxOutBytes uint64) []*partWrapper {
 	if len(src) < 2 {
 		// There is no need in merging zero or one part :)
@@ -1501,27 +1507,28 @@ func (ddb *datadb) deleteRows(pso *partitionSearchOptions, stopCh <-chan struct{
 
 	// Search for parts, which contain logs matching pso for the deletion and which aren't in merge at the moment.
 	var pwsToMerge []*partWrapper
+	needRepeat := false
 	for _, pw := range pws {
 		if !pw.p.hasMatchingRows(pso, stopCh) {
 			continue
 		}
 
 		ddb.partsLock.Lock()
-		ok := !pw.isInMerge
-		if ok {
+		if !pw.isInMerge {
 			pw.isInMerge = true
 			pwsToMerge = append(pwsToMerge, pw)
+		} else {
+			// The pw is in merge now, so it must be processed again for the rows' deletion in the future.
+			needRepeat = true
 		}
 		ddb.partsLock.Unlock()
-
-		if !ok {
-			ddb.releasePartsToMerge(pwsToMerge)
-			return false
-		}
 	}
 
 	// merge pwsToMerge while dropping logs matching pso.
-	return ddb.mustMergePartsInternal(pwsToMerge, false, pso, stopCh)
+	if !ddb.mustMergePartsInternal(pwsToMerge, false, pso, stopCh) {
+		return false
+	}
+	return !needRepeat
 }
 
 func appendAllPartsForMergeLocked(dst, src []*partWrapper) []*partWrapper {

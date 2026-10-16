@@ -411,6 +411,9 @@ func appendQuotedIdent(dst []byte, s string) []byte {
 	dst = utf8.AppendRune(dst, '"')
 	for i := 0; i < len(s); {
 		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == '"' || r == '\\' {
+			dst = append(dst, '\\')
+		}
 		dst = utf8.AppendRune(dst, r)
 		i += size
 	}
@@ -686,12 +689,11 @@ func scanSingleDuration(s string, canBeNegative bool) int {
 		return -1
 	}
 	if s[i] == '.' {
-		j := i
 		i++
 		for i < len(s) && isDecimalChar(s[i]) {
 			i++
 		}
-		if i == j || i == len(s) {
+		if i == len(s) {
 			return -1
 		}
 	}
