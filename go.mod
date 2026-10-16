@@ -8,7 +8,7 @@ require (
 	github.com/VictoriaMetrics/VictoriaLogs v1.47.1-0.20260225221819-a408207c2242
 	github.com/VictoriaMetrics/metrics v1.44.1
 	github.com/blevesearch/bleve/v2 v2.6.1
-	github.com/mark3labs/mcp-go v1.1.1
+	github.com/mark3labs/mcp-go v1.2.1
 	github.com/tmc/langchaingo v0.1.14
 )
 
